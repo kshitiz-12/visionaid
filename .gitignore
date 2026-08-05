@@ -1,0 +1,156 @@
+# =========================
+# Flutter
+# =========================
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.flutter-versions
+.packages
+.pub/
+.pub-cache/
+build/
+
+# Generated files
+.generated/
+.generated_plugin_registrant.dart
+
+# Dart
+*.dart.js
+*.part.js
+*.js.deps
+*.js.map
+*.info
+
+# Android
+**/android/.gradle/
+**/android/local.properties
+**/android/captures/
+
+# iOS
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+
+# macOS
+**/macos/Flutter/ephemeral/
+
+# Linux
+**/linux/flutter/ephemeral/
+
+# Windows
+**/windows/flutter/ephemeral/
+
+# Fuchsia
+**/fuchsia/.packages
+
+# IDE
+.idea/
+.vscode/
+
+# Crashlytics (optional)
+crashlytics-build.properties
+
+# =========================
+# Dependencies
+# =========================
+node_modules/
+
+# =========================
+# Environment Variables
+# =========================
+.env
+.env.*
+!.env.example
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Build Output
+# =========================
+dist/
+build/
+out/
+.next/
+coverage/
+
+# =========================
+# Cache
+# =========================
+.cache/
+.parcel-cache/
+.vite/
+.eslintcache
+
+# =========================
+# IDE & Editors
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*.iml
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Runtime Files
+# =========================
+*.pid
+*.seed
+*.pid.lock
+
+# =========================
+# Temporary Files
+# =========================
+tmp/
+temp/
+
+# =========================
+# Package Managers
+# =========================
+.pnp.*
+.npm
+.yarn/
+.pnpm-store/
+
+# =========================
+# TypeScript
+# =========================
+*.tsbuildinfo
+
+# =========================
+# Database Files (if local)
+# =========================
+*.sqlite
+*.sqlite3
+
+# =========================
+# Firebase (Optional)
+# =========================
+.firebase/
+
+# =========================
+# Docker (Optional)
+# =========================
+.docker/
+
+# =========================
+# Misc
+# =========================
+.vercel
+.netlify
