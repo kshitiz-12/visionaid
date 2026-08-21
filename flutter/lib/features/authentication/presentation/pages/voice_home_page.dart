@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../features/voice/presentation/providers/voice_provider.dart';
 import '../../../../features/voice/presentation/widgets/voice_command_button.dart';
@@ -43,6 +44,13 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Voice Assistant'),
+        actions: [
+          IconButton(
+            tooltip: 'Profile',
+            onPressed: () => context.push('/profile'),
+            icon: const Icon(Icons.person_outline_rounded),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Padding(

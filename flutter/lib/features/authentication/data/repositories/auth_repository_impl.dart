@@ -1,31 +1,70 @@
+import '../../../../core/config/app_config.dart';
+import '../../domain/entities/app_user.dart';
 import '../../domain/repositories/auth_repository.dart';
+import '../services/auth_service.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
+  AuthRepositoryImpl(this._authService);
+
+  final AuthService _authService;
+
   @override
-  Future<void> signIn({
-    required String email,
-    required String password,
-  }) async {
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    if (email.isEmpty || password.isEmpty) {
-      throw StateError('Email and password are required');
+  Stream<AppUser?> watchAuthUser() async* {
+    if (!AppConfig.isSupabaseConfigured) {
+      yield null;
+      return;
+    }
+
+    yield _authService.currentAppUser;
+
+    await for (final event in _authService.authStateChanges) {
+      final user = event.session?.user;
+      if (user == null) {
+        yield null;
+        continue;
+      }
+
+      yield AppUser(
+        id: user.id,
+        email: user.email ?? '',
+        displayName: user.userMetadata?['full_name'] as String? ??
+            user.userMetadata?['display_name'] as String? ??
+            '',
+      );
     }
   }
 
   @override
-  Future<void> signUp({
+  AppUser? get currentUser => _authService.currentAppUser;
+
+  @override
+  Future<AppUser> signIn({
+    required String email,
+    required String password,
+  }) {
+    return _authService.signIn(email: email, password: password);
+  }
+
+  @override
+  Future<AppUser> signUp({
     required String email,
     required String password,
     required String displayName,
-  }) async {
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    if (email.isEmpty || password.length < 8 || displayName.isEmpty) {
-      throw StateError('Invalid registration payload');
-    }
+  }) {
+    return _authService.signUp(
+      email: email,
+      password: password,
+      displayName: displayName,
+    );
   }
 
   @override
-  Future<void> signOut() async {
-    await Future<void>.delayed(const Duration(milliseconds: 200));
+  Future<void> resetPassword({required String email}) {
+    return _authService.resetPassword(email: email);
+  }
+
+  @override
+  Future<void> signOut() {
+    return _authService.signOut();
   }
 }

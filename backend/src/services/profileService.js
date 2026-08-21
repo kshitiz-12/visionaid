@@ -1,22 +1,24 @@
+const {
+  findProfileByUserId,
+  upsertProfileByUserId,
+} = require('../repositories/profileRepository');
+const { createAppError } = require('../utils/appError');
+
 async function getProfileService(userId) {
-  return {
-    id: userId,
-    displayName: 'VisionAid User',
-    email: 'user@visionaid.app',
-    preferences: {
-      voiceEnabled: true,
-      darkMode: true,
-      offlineMode: true,
-    },
-  };
+  const profile = await findProfileByUserId(userId);
+
+  if (!profile) {
+    throw createAppError('Profile not found', {
+      statusCode: 404,
+      code: 'PROFILE_NOT_FOUND',
+    });
+  }
+
+  return profile;
 }
 
 async function updateProfileService(userId, updates) {
-  return {
-    id: userId,
-    ...updates,
-    updatedAt: new Date().toISOString(),
-  };
+  return upsertProfileByUserId(userId, updates);
 }
 
 module.exports = {

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/config/app_config.dart';
+import '../../../../core/exceptions/app_exception.dart';
 import '../providers/auth_provider.dart';
 
 class AuthPage extends ConsumerStatefulWidget {
@@ -12,11 +14,13 @@ class AuthPage extends ConsumerStatefulWidget {
 }
 
 class _AuthPageState extends ConsumerState<AuthPage> {
+  final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   bool _isSignUp = false;
+  bool _obscurePassword = true;
 
   @override
   void dispose() {
@@ -27,39 +31,38 @@ class _AuthPageState extends ConsumerState<AuthPage> {
   }
 
   Future<void> _submit() async {
+    if (!AppConfig.isSupabaseConfigured) {
+      _showMessage(
+        'Supabase is not configured. Copy dart_defines.example.json to dart_defines.json and add your keys.',
+      );
+      return;
+    }
+
+    if (!(_formKey.currentState?.validate() ?? false)) {
+      return;
+    }
+
     final email = _emailController.text.trim();
-    final password = _passwordController.text.trim();
+    final password = _passwordController.text;
     final displayName = _nameController.text.trim();
-
-    if (email.isEmpty || password.isEmpty) {
-      _showMessage('Email and password are required.');
-      return;
-    }
-
-    if (_isSignUp && displayName.isEmpty) {
-      _showMessage('Display name is required to create an account.');
-      return;
-    }
 
     setState(() => _isLoading = true);
 
     try {
       if (_isSignUp) {
         await ref.read(authStateProvider.notifier).signUp(
-          email: email,
-          password: password,
-          displayName: displayName,
-        );
+              email: email,
+              password: password,
+              displayName: displayName,
+            );
       } else {
         await ref.read(authStateProvider.notifier).signIn(
-          email: email,
-          password: password,
-        );
+              email: email,
+              password: password,
+            );
       }
-
-      if (mounted) {
-        context.go('/home');
-      }
+    } on AppException catch (error) {
+      _showMessage(error.message);
     } on StateError catch (error) {
       _showMessage(error.message);
     } catch (_) {
@@ -82,80 +85,158 @@ class _AuthPageState extends ConsumerState<AuthPage> {
 
   @override
   Widget build(BuildContext context) {
+    final configured = AppConfig.isSupabaseConfigured;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Secure Access'),
-      ),
+      appBar: AppBar(title: const Text('Secure Access')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Icon(
-                    Icons.visibility_rounded,
-                    size: 68,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    _isSignUp ? 'Create your account' : 'Welcome back',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Your personal visual guide stays private and secure.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 24),
-                  if (_isSignUp)
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (!configured) ...[
+                      Card(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        child: const Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Text(
+                            'Supabase keys missing. Copy dart_defines.example.json → dart_defines.json and follow docs/supabase-setup.md',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    Icon(
+                      Icons.visibility_rounded,
+                      size: 68,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      _isSignUp ? 'Create your account' : 'Welcome back',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Your personal visual guide stays private and secure.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 24),
+                    if (_isSignUp)
+                      TextFormField(
+                        controller: _nameController,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.name],
+                        decoration: const InputDecoration(
+                          labelText: 'Display name',
+                          prefixIcon: Icon(Icons.person_outline_rounded),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (value) {
+                          if (!_isSignUp) return null;
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Display name is required';
+                          }
+                          return null;
+                        },
+                      ),
+                    if (_isSignUp) const SizedBox(height: 16),
                     TextFormField(
-                      controller: _nameController,
+                      controller: _emailController,
+                      textInputAction: TextInputAction.next,
+                      autofillHints: const [AutofillHints.email],
                       decoration: const InputDecoration(
-                        labelText: 'Display name',
-                        prefixIcon: Icon(Icons.person_outline_rounded),
+                        labelText: 'Email',
+                        prefixIcon: Icon(Icons.email_outlined),
                         border: OutlineInputBorder(),
                       ),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) {
+                        final email = value?.trim() ?? '';
+                        if (email.isEmpty) return 'Email is required';
+                        if (!email.contains('@') || !email.contains('.')) {
+                          return 'Enter a valid email';
+                        }
+                        return null;
+                      },
                     ),
-                  if (_isSignUp) const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _emailController,
-                    decoration: const InputDecoration(
-                      labelText: 'Email',
-                      prefixIcon: Icon(Icons.email_outlined),
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _passwordController,
+                      textInputAction: TextInputAction.done,
+                      autofillHints: [
+                        _isSignUp
+                            ? AutofillHints.newPassword
+                            : AutofillHints.password,
+                      ],
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: const Icon(Icons.lock_outline_rounded),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          onPressed: () {
+                            setState(() => _obscurePassword = !_obscurePassword);
+                          },
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                          ),
+                        ),
+                      ),
+                      obscureText: _obscurePassword,
+                      onFieldSubmitted: (_) => _submit(),
+                      validator: (value) {
+                        final password = value ?? '';
+                        if (password.isEmpty) return 'Password is required';
+                        if (_isSignUp && password.length < 8) {
+                          return 'Use at least 8 characters';
+                        }
+                        return null;
+                      },
                     ),
-                    keyboardType: TextInputType.emailAddress,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _passwordController,
-                    decoration: const InputDecoration(
-                      labelText: 'Password',
-                      prefixIcon: Icon(Icons.lock_outline_rounded),
-                      border: OutlineInputBorder(),
+                    const SizedBox(height: 24),
+                    FilledButton.icon(
+                      onPressed: _isLoading ? null : _submit,
+                      icon: Icon(
+                        _isSignUp
+                            ? Icons.person_add_alt_1_rounded
+                            : Icons.login_rounded,
+                      ),
+                      label: Text(
+                        _isLoading
+                            ? 'Please wait...'
+                            : (_isSignUp ? 'Create account' : 'Sign in'),
+                      ),
                     ),
-                    obscureText: true,
-                  ),
-                  const SizedBox(height: 24),
-                  FilledButton.icon(
-                    onPressed: _isLoading ? null : _submit,
-                    icon: Icon(_isSignUp ? Icons.person_add_alt_1_rounded : Icons.login_rounded),
-                    label: Text(_isLoading ? 'Please wait...' : (_isSignUp ? 'Create account' : 'Sign in')),
-                  ),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () => setState(() => _isSignUp = !_isSignUp),
-                    child: Text(
-                      _isSignUp ? 'Already have an account? Sign in' : 'Need an account? Sign up',
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: _isLoading
+                          ? null
+                          : () => setState(() => _isSignUp = !_isSignUp),
+                      child: Text(
+                        _isSignUp
+                            ? 'Already have an account? Sign in'
+                            : 'Need an account? Sign up',
+                      ),
                     ),
-                  ),
-                ],
+                    if (!_isSignUp)
+                      TextButton(
+                        onPressed: _isLoading
+                            ? null
+                            : () => context.push('/auth/forgot-password'),
+                        child: const Text('Forgot password?'),
+                      ),
+                  ],
+                ),
               ),
             ),
           ),

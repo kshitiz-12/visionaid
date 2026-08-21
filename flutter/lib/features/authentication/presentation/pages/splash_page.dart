@@ -1,31 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 
-class SplashPage extends StatefulWidget {
+import '../../../../core/config/app_config.dart';
+
+class SplashPage extends StatelessWidget {
   const SplashPage({super.key});
-
-  @override
-  State<SplashPage> createState() => _SplashPageState();
-}
-
-class _SplashPageState extends State<SplashPage> {
-  @override
-  void initState() {
-    super.initState();
-    unawaited(_initialize());
-  }
-
-  Future<void> _initialize() async {
-    await Future<void>.delayed(const Duration(milliseconds: 1400));
-
-    if (!mounted) {
-      return;
-    }
-
-    context.go('/auth');
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,13 +12,10 @@ class _SplashPageState extends State<SplashPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.visibility_outlined,
-              size: 80,
-            ),
+            const Icon(Icons.visibility_outlined, size: 80),
             const SizedBox(height: 24),
             Text(
-              'VisionAid++',
+              AppConfig.appName,
               style: Theme.of(context).textTheme.headlineLarge,
             ),
             const SizedBox(height: 12),
@@ -48,6 +23,8 @@ class _SplashPageState extends State<SplashPage> {
               'Adaptive AI for a safer journey',
               style: Theme.of(context).textTheme.bodyLarge,
             ),
+            const SizedBox(height: 32),
+            const CircularProgressIndicator(),
           ],
         ),
       ),

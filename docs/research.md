@@ -1,31 +1,76 @@
-# VisionAid++ Research Contribution
+# VisionAid++ Research Notes
 
-## Core novelty
+## Research contribution
 
-The novelty of VisionAid++ is not object detection. It is the adaptive context-aware decision engine that converts raw detection data into a concise, relevant spoken summary.
+**Adaptive Context-Aware Decision Engine**
 
-## Research objective
+VisionAid++ does not announce every object detected by YOLO. Instead, a dedicated Context Engine module scores each detection and speaks only when the priority exceeds a threshold.
 
-Reduce cognitive overload for blind or low-vision users by surfacing only the most relevant objects and hazards in context.
+## Problem statement
 
-## Decision architecture
+Continuous object announcements create cognitive overload for visually impaired users. Existing vision apps often read everything the model detects, which is noisy and unusable in real environments.
 
-For each detected object, the system calculates a priority score:
+## Proposed pipeline
 
-PriorityScore = Confidence + Distance + Motion + UserIntent + ObjectImportance + NavigationRisk
+```
+Camera
+  ↓
+YOLOv8 Nano (on-device, TFLite)
+  ↓
+Object Detection results
+  ↓
+Context Engine (testable module)
+  ↓
+Risk Calculation
+  ↓
+Priority Ranking
+  ↓
+Voice Response (TTS)
+```
 
-Objects are ranked and only the highest-scoring ones are spoken. The output is shaped by the user’s current task and environment.
+## Priority score factors (planned)
 
-## Design rationale
+| Factor | Description |
+|--------|-------------|
+| confidence | Model detection confidence |
+| distance | Estimated distance (ARCore depth) |
+| motion | Approaching vs static object |
+| user intent | Active voice command context |
+| object importance | User favorites, learned preferences |
+| navigation risk | Obstacles in travel path |
+| environment | Indoor vs outdoor mode |
+| historical context | Recent detections, location memory |
 
-Blind users do not need constant narration of every object. They need prioritized alerts that highlight immediate risks, navigation barriers, and emotionally relevant objects. This reduces both noise and mental fatigue.
+## Foundation status
 
-## Research phases
+The foundation includes a stub priority scoring utility at `flutter/lib/core/utils/context_priority_score.dart` with unit tests. Full Context Engine implementation is a **future phase**.
 
-- Phase 1: voice assistant, OCR, SOS, object detection
-- Phase 2: risk detection, scene description, navigation, memory
-- Phase 3: ordering, reminders, analytics, cloud sync
+## Privacy constraints
 
-## Privacy and safety
+Research data collection must respect user privacy:
 
-The system is designed to minimize data transmission and operate offline wherever possible. Sensitive scene data remains local unless required for advanced optional AI assistance.
+- Camera frames remain on device by default
+- Detection history stores metadata only (object name, confidence, distance, risk score)
+- Cloud processing (Gemini) is optional and clearly disclosed
+- No sensitive images in logs or research exports without explicit consent
+
+## Evaluation metrics (planned)
+
+- Reduction in spoken announcements vs naive baseline
+- Task completion time in navigation scenarios
+- User-reported cognitive load (subjective scale)
+- False negative rate for high-risk obstacles
+
+## Related work areas
+
+- Accessible mobile navigation for blind users
+- On-device object detection with YOLO
+- Attention-based alert prioritization
+- Multimodal context fusion (vision + voice + location)
+
+## Next research steps
+
+1. Implement full Context Engine module with configurable weights
+2. Collect labeled scenarios for priority calibration
+3. Integrate ARCore distance into risk scoring
+4. Compare naive vs context-aware announcement rates in user studies

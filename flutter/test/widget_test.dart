@@ -1,16 +1,25 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:visionaid/main.dart';
+import 'package:visionaid/core/utils/context_priority_score.dart';
 
 void main() {
-  testWidgets('VisionAid app navigates from splash to auth', (tester) async {
-    await tester.pumpWidget(const ProviderScope(child: VisionAidApp()));
-    expect(find.text('VisionAid++'), findsOneWidget);
-
-    await tester.pump(const Duration(milliseconds: 1500));
-    await tester.pump();
-
-    expect(find.text('Welcome back'), findsOneWidget);
+  test('priority score increases with navigation risk', () {
+    final low = calculatePriorityScore(
+      confidence: 0.5,
+      distance: 0.2,
+      motion: 0.1,
+      userIntent: 0.2,
+      objectImportance: 0.2,
+      navigationRisk: 0.1,
+    );
+    final high = calculatePriorityScore(
+      confidence: 0.5,
+      distance: 0.2,
+      motion: 0.1,
+      userIntent: 0.2,
+      objectImportance: 0.2,
+      navigationRisk: 1.0,
+    );
+    expect(high, greaterThan(low));
   });
 }

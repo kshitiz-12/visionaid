@@ -1,57 +1,122 @@
 # VisionAid++ API Contract
 
+Base URL: `http://127.0.0.1:3000` (development)
+
+All responses follow:
+
+```json
+{
+  "success": true,
+  "message": "Human-readable message",
+  "data": {},
+  "error": null
+}
+```
+
 ## Authentication
 
-- POST /auth/login
-- POST /auth/register
+Authentication is handled by **Supabase Auth** on the Flutter client (email/password).
 
-## User and profile
+Protected backend routes require:
 
-- GET /profile
-- PATCH /profile
+```
+Authorization: Bearer <supabase_access_token>
+```
 
-## Emergency
+The Node.js backend verifies tokens via `supabase.auth.getUser(token)`.
 
-- POST /emergency
+There are **no** custom `/auth/login` or `/auth/register` endpoints on Node.js.
 
-## History
+## Health
 
-- GET /history
-- POST /history
+### GET /api/health
 
-## Object memory
+Public endpoint. No authentication required.
 
-- POST /object/save
-- GET /object/find
+**Response 200**
 
-## Navigation
+```json
+{
+  "success": true,
+  "message": "VisionAid++ backend is healthy",
+  "data": {
+    "status": "ok",
+    "service": "visionaid-backend",
+    "timestamp": "2025-08-21T12:00:00.000Z"
+  },
+  "error": null
+}
+```
 
-- POST /navigation
+### GET /api/ready
 
-## OCR
+Readiness probe. Returns 200 when database and auth config are available; otherwise 503.
 
-- POST /ocr
+**Response 200**
 
-## Detection
+```json
+{
+  "success": true,
+  "message": "VisionAid++ backend is ready",
+  "data": {
+    "status": "ready",
+    "checks": { "database": true, "auth": true },
+    "timestamp": "2025-08-21T12:00:00.000Z"
+  },
+  "error": null
+}
+```
 
-- POST /detection
+## Profile
 
-## Scene
+### GET /api/profile
 
-- POST /scene
+Requires Supabase JWT.
 
-## Response conventions
+Returns the authenticated user's profile from the `profiles` table.
 
-All endpoints use:
+### PATCH /api/profile
 
-- success: true|false
-- message: string
-- data: object
-- error: object|null
+Requires Supabase JWT.
+
+**Body**
+
+```json
+{
+  "full_name": "Updated Name",
+  "email": "user@example.com"
+}
+```
+
+## Planned endpoints (not yet implemented)
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | /api/scene | Gemini scene understanding |
+| POST | /api/context | Context engine scoring |
+| GET | /api/history/detections | Detection history |
+| GET | /api/history/voice | Voice command history |
+| POST | /api/emergency | Emergency alert orchestration |
+
+## Error codes
+
+| Code | HTTP | Description |
+|------|------|-------------|
+| UNAUTHORIZED | 401 | Missing Bearer token |
+| INVALID_TOKEN | 401 | Expired or invalid Supabase JWT |
+| RATE_LIMIT_EXCEEDED | 429 | Too many requests |
+| SERVICE_UNAVAILABLE | 503 | Supabase not configured on server |
 
 ## Security
 
-- JWT-based access tokens for protected routes
-- Firebase user identity validation for mobile clients
-- rate limiting and request validation middleware
-- no raw camera frames in backend requests
+- Supabase JWT verification on protected routes
+- Prisma ORM for server-side PostgreSQL access (same Supabase DB)
+- Rate limiting (200 requests / 15 min per IP)
+- Request logging (method, path, status, duration)
+- No raw camera frames in API requests
+- Service-role key never exposed to clients
+
+## Privacy
+
+- Do not log passwords, access tokens, or sensitive images
+- Prefer on-device processing; cloud endpoints are opt-in

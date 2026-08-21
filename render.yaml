@@ -1,0 +1,35 @@
+# VisionAid++ — Render Blueprint
+# https://render.com/docs/blueprint-spec
+#
+# Deploy: connect this GitHub repo in Render → New → Blueprint
+# Then set secret env vars in the Render dashboard (never commit them).
+
+services:
+  - type: web
+    name: visionaid-backend
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false

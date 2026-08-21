@@ -1,5 +1,5 @@
 name: visionaid
-description: "A new Flutter project."
+description: "VisionAid++ — AI-powered, voice-first vision assistant for visually impaired users."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -35,6 +35,7 @@ dependencies:
   http: ^1.2.2
   flutter_riverpod: ^2.6.1
   go_router: ^14.2.0
+  supabase_flutter: ^2.9.0
 
 dev_dependencies:
   flutter_test:

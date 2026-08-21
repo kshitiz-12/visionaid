@@ -6,60 +6,81 @@
 
 The codebase is split into feature modules. Each feature contains layered responsibilities:
 
-- data
-- domain
-- presentation
+- **data** — repositories, services, models, DTOs
+- **domain** — entities, repository contracts, business rules
+- **presentation** — pages, widgets, Riverpod providers
 
-This keeps business logic isolated from UI and infrastructure, which is essential for maintainability and testability.
+This keeps business logic isolated from UI and infrastructure.
 
 ### 2. Dependency inversion
 
-Upper layers depend on abstractions, not concrete implementations. Repositories are interfaces in the domain layer and implementations are provided via data-layer repositories.
+Upper layers depend on abstractions. Repositories are interfaces in the domain layer; concrete implementations live in the data layer and are injected via Riverpod providers.
 
-### 3. Voice-first interaction model
+### 3. Supabase as primary backend platform
 
-The product is designed around voice as the primary mode of interaction. All major flows are accessible without visual input, and the user experience is optimized to reduce cognitive load.
+Supabase handles:
 
-### 4. Privacy-first inference
+- Authentication (email/password initially)
+- PostgreSQL database with Row Level Security
+- Storage for user-specific files when needed
 
-Object detection happens on-device. No camera frames are transmitted to a server. This supports the offline-first requirement and reduces security exposure.
+The Node.js backend is **not** the primary database layer for the mobile client. It uses **Prisma** as the ORM to access the same Supabase PostgreSQL database for server-side operations (AI orchestration, complex queries, admin tasks). **Supabase Auth** remains the identity provider; JWTs are verified on protected routes.
 
-### 5. Adaptive context-aware prioritization
+### 4. Voice-first interaction model
 
-The Context Engine filters detected objects by priority score before speaking. This is the product’s research contribution and reduces information overload.
+Voice is the primary mode of interaction. Major flows must remain accessible without visual input.
 
-## Priority scoring model
+### 5. Privacy-first inference
 
-The context engine calculates a priority score using:
+Object detection and OCR run on-device. Camera frames are not uploaded by default. Cloud processing (Gemini) is opt-in and clearly separated from local inference.
 
-- confidence
-- distance
-- motion
-- user intent
-- object importance
-- navigation risk
+### 6. Adaptive context-aware prioritization
 
-This produces high-value alerts such as “Person approaching from right” instead of reading every object.
+The Context Engine (future phase) filters detected objects by priority score before speaking. This is the product's research contribution.
 
-## Layer boundaries
+## System layers
 
-### Flutter layer
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Flutter (Mobile)                      │
+│  presentation → domain → data → core                    │
+│  On-device: YOLO, ML Kit OCR, STT, TTS                   │
+└───────────────┬─────────────────────┬───────────────────┘
+                │ Supabase SDK        │ HTTP (JWT)
+                ▼                     ▼
+┌───────────────────────┐   ┌─────────────────────────────┐
+│       Supabase        │   │   Node.js + Express         │
+│  Auth / Postgres /    │   │   AI orchestration, Gemini  │
+│  Storage / RLS        │   │   JWT verification          │
+└───────────────────────┘   └─────────────────────────────┘
+```
 
-- presentation: pages, widgets, providers
-- domain: entities, use cases, repository contracts
-- data: datasource implementations, models, repository implementations
-- core: config, services, constants, theme, exceptions, utils
+## Flutter layer
 
-### Backend layer
+| Layer | Responsibility |
+|-------|----------------|
+| presentation | Pages, widgets, providers |
+| domain | Entities, repository contracts |
+| data | Supabase/API implementations |
+| core | Config, services, theme, utils |
 
-- controllers
-- routes
-- services
-- repositories
-- middleware
-- config
-- models
+## Backend layer
 
-## Why this architecture
+| Layer | Responsibility |
+|-------|----------------|
+| routes | HTTP endpoint definitions |
+| controllers | Request/response handling |
+| services | Business logic |
+| repositories | Prisma data access (PostgreSQL) |
+| middlewares | Auth, logging, rate limiting, errors |
+| ai | Vision, OCR, context, Gemini modules (future) |
 
-This architecture reduces coupling between UI, domain logic, and infrastructure. It allows independent evolution of the AI, voice, and navigation subsystems without forcing cross-cutting changes. It also keeps the product scalable enough for future phases such as location memory, ordering, reminders, and analytics.
+## Detection pipeline (planned)
+
+```
+Camera → YOLO → Object Detection → Context Engine → Risk Calculation → Priority Ranking → Voice Response
+```
+
+## Deployment
+
+Initial deployment target: **Render** for the Node.js backend. Supabase is hosted on Supabase Cloud.

@@ -1,0 +1,134 @@
+// Prisma schema for VisionAid++ (Supabase PostgreSQL)
+// Schema migrations are managed in supabase/migrations/.
+// Run `npm run db:generate` after schema changes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Profile {
+  id        String   @id @db.Uuid
+  fullName  String?  @map("full_name")
+  email     String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  emergencyContacts EmergencyContact[]
+  favoriteObjects   FavoriteObject[]
+  detectionHistory  DetectionHistory[]
+  voiceHistory      VoiceHistory[]
+  locations         Location[]
+  settings          Settings?
+  orders            Order[]
+
+  @@map("profiles")
+}
+
+model EmergencyContact {
+  id           String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  name         String
+  phone        String
+  relationship String?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("emergency_contacts")
+}
+
+model FavoriteObject {
+  id          String                       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String                       @map("user_id") @db.Uuid
+  objectName  String                       @map("object_name")
+  description String?
+  embedding   Unsupported("vector(512)")?
+  createdAt   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("favorite_objects")
+}
+
+model DetectionHistory {
+  id         String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  objectName String   @map("object_name")
+  confidence Float?
+  distance   Float?
+  riskScore  Float?   @map("risk_score")
+  detectedAt DateTime @default(now()) @map("detected_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("detection_history")
+}
+
+model VoiceHistory {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  command   String
+  intent    String?
+  response  String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("voice_history")
+}
+
+model Location {
+  id        String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  name      String
+  latitude  Float
+  longitude Float
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("locations")
+}
+
+model Settings {
+  id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId        String   @unique @map("user_id") @db.Uuid
+  indoorMode    Boolean  @default(false) @map("indoor_mode")
+  outdoorMode   Boolean  @default(true) @map("outdoor_mode")
+  voiceSpeed    Float    @default(1.0) @map("voice_speed")
+  voiceVolume   Float    @default(1.0) @map("voice_volume")
+  alertDistance Float    @default(3.0) @map("alert_distance")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("settings")
+}
+
+model Order {
+  id             String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  restaurantName String   @map("restaurant_name")
+  items          Json     @default("[]")
+  totalAmount    Decimal  @default(0) @map("total_amount") @db.Decimal(10, 2)
+  status         String   @default("pending")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("orders")
+}

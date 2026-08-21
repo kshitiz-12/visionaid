@@ -1,16 +1,37 @@
-# visionaid
+# VisionAid++ Flutter App
 
-A new Flutter project.
+Voice-first mobile client for VisionAid++.
 
-## Getting Started
+## Setup
 
-This project is a starting point for a Flutter application.
+```bash
+cd flutter
+flutter pub get
+```
 
-A few resources to get you started if this is your first Flutter project:
+Copy `flutter/.env.example` values into dart-defines:
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+```bash
+flutter run \
+  --dart-define=SUPABASE_URL=https://YOUR.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=YOUR_ANON_KEY \
+  --dart-define=API_BASE_URL=http://127.0.0.1:3000
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+For release builds set `DEBUG_MODE=false` and always provide Supabase keys.
+
+## Architecture
+
+- Clean Architecture feature folders
+- Riverpod for state
+- GoRouter with auth redirects
+- Supabase Auth (email/password)
+- Backend API calls send Supabase JWT via `ApiClient`
+
+## Commands
+
+```bash
+flutter analyze
+flutter test
+flutter run
+```

@@ -1,0 +1,3 @@
+-- VisionAid++ seed file
+-- Intentionally empty for foundation setup.
+-- Add development seed data locally only when needed.

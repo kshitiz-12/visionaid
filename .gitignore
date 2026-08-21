@@ -140,9 +140,17 @@ temp/
 *.sqlite3
 
 # =========================
-# Firebase (Optional)
+# Supabase
 # =========================
-.firebase/
+.supabase/.temp/
+
+# =========================
+# Flutter local dart-defines (secrets)
+flutter/dart_defines.json
+flutter/.env
+
+# Backend local env
+backend/.env
 
 # =========================
 # Docker (Optional)

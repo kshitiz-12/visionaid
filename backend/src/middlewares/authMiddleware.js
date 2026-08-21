@@ -1,10 +1,9 @@
-const jwt = require('jsonwebtoken');
-const { jwtSecret } = require('../config/env');
+const { getSupabaseAdmin } = require('../config/supabase');
 
-function requireAuth(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
+async function requireAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
 
-  if (!token) {
+  if (!authHeader?.startsWith('Bearer ')) {
     return res.status(401).json({
       success: false,
       message: 'Authentication required',
@@ -13,17 +12,38 @@ function requireAuth(req, res, next) {
     });
   }
 
+  const token = authHeader.replace('Bearer ', '');
+  const supabase = getSupabaseAdmin();
+
+  if (!supabase) {
+    return res.status(503).json({
+      success: false,
+      message: 'Authentication service unavailable',
+      data: null,
+      error: { code: 'SERVICE_UNAVAILABLE' },
+    });
+  }
+
   try {
-    const payload = jwt.verify(token, jwtSecret);
-    req.user = payload;
+    const { data, error } = await supabase.auth.getUser(token);
+
+    if (error || !data.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired token',
+        data: null,
+        error: { code: 'INVALID_TOKEN' },
+      });
+    }
+
+    req.user = {
+      id: data.user.id,
+      email: data.user.email,
+    };
+
     return next();
   } catch (error) {
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid or expired token',
-      data: null,
-      error: { code: 'INVALID_TOKEN' },
-    });
+    return next(error);
   }
 }
 
