@@ -95,25 +95,20 @@ If `/api/ready` is `503`, fix `DATABASE_URL` / Supabase keys and redeploy.
 
 ```powershell
 cd flutter
-copy dart_defines.example.json dart_defines.json
+copy .env.example .env
 ```
 
-Edit `dart_defines.json`:
+Edit `flutter/.env`:
 
-```json
-{
-  "SUPABASE_URL": "https://YOUR_REF.supabase.co",
-  "SUPABASE_ANON_KEY": "YOUR_ANON_KEY",
-  "API_BASE_URL": "https://YOUR-SERVICE.onrender.com",
-  "DEBUG_MODE": "true",
-  "PASSWORD_RESET_REDIRECT_TO": "io.supabase.visionaid://login-callback/"
-}
+```env
+SUPABASE_URL=https://YOUR_REF.supabase.co
+SUPABASE_ANON_KEY=YOUR_ANON_KEY
+API_BASE_URL=https://YOUR-SERVICE.onrender.com
 ```
-
-Run:
 
 ```powershell
-flutter run --dart-define-from-file=dart_defines.json
+flutter run
+flutter build apk --release
 ```
 
 ## 7. End-to-end check
@@ -135,9 +130,11 @@ npm run dev
 
 Flutter:
 
-```json
-"API_BASE_URL": "http://127.0.0.1:3000"
+```env
+API_BASE_URL=http://127.0.0.1:3000
 ```
+
+(in `flutter/.env`)
 
 Android emulator local API: use `http://10.0.2.2:3000` instead of `127.0.0.1`.
 
@@ -154,5 +151,5 @@ Android emulator local API: use `http://10.0.2.2:3000` instead of `127.0.0.1`.
 ## Security
 
 - Never put `SUPABASE_SERVICE_ROLE_KEY` in Flutter
-- Never commit `.env` / `dart_defines.json`
+- Never commit `.env` / secrets
 - Prefer Render secret env vars over hardcoding

@@ -1,46 +1,46 @@
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
 class AppConfig {
   const AppConfig._();
 
   static const String appName = 'VisionAid++';
 
-  static const bool isDebugMode = bool.fromEnvironment(
-    'DEBUG_MODE',
-    defaultValue: true,
-  );
+  static String get apiBaseUrl =>
+      _get('API_BASE_URL', 'https://visionaid-r29c.onrender.com');
 
-  static const String apiBaseUrl = String.fromEnvironment(
-    'API_BASE_URL',
-    defaultValue: 'http://127.0.0.1:3000',
-  );
+  static String get supabaseUrl => _get('SUPABASE_URL', '');
 
-  static const String supabaseUrl = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: '',
-  );
+  static String get supabaseAnonKey => _get('SUPABASE_ANON_KEY', '');
 
-  static const String supabaseAnonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue: '',
-  );
-
-  static const String passwordResetRedirectTo = String.fromEnvironment(
-    'PASSWORD_RESET_REDIRECT_TO',
-    defaultValue: 'io.supabase.visionaid://login-callback/',
-  );
+  static bool get isDebugMode =>
+      _get('DEBUG_MODE', 'true').toLowerCase() != 'false';
 
   static bool get isSupabaseConfigured =>
-      supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
-
-  static bool get isReleaseBuild => !isDebugMode;
-
-  static void assertProductionConfig() {
-    if (isReleaseBuild && !isSupabaseConfigured) {
-      throw StateError(
-        'SUPABASE_URL and SUPABASE_ANON_KEY are required in release builds.',
-      );
-    }
-  }
+      supabaseUrl.isNotEmpty &&
+      supabaseAnonKey.isNotEmpty &&
+      !supabaseUrl.contains('YOUR_PROJECT') &&
+      !supabaseAnonKey.contains('YOUR_SUPABASE');
 
   static const bool enableOfflineMode = true;
   static const bool enableVoiceFirstUi = true;
+
+  static String _get(String key, String fallback) {
+    if (!dotenv.isInitialized) {
+      return fallback;
+    }
+    return dotenv.maybeGet(key) ?? fallback;
+  }
+
+  /// Call once in main(). Then just use: flutter run / flutter build apk
+  static Future<void> load() async {
+    try {
+      await dotenv.load(fileName: '.env');
+    } catch (_) {
+      try {
+        await dotenv.load(fileName: '.env.example');
+      } catch (_) {
+        // App still runs offline without cloud config.
+      }
+    }
+  }
 }

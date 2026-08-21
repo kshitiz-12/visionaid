@@ -8,8 +8,9 @@ class AuthState {
     this.errorMessage,
   });
 
-  const AuthState.unauthenticated()
-      : status = AuthStatus.unauthenticated,
+  /// Guest mode — full app access, no cloud account.
+  const AuthState.guest()
+      : status = AuthStatus.guest,
         user = null,
         errorMessage = null;
 
@@ -32,11 +33,13 @@ class AuthState {
   final String? errorMessage;
 
   bool get isAuthenticated => status == AuthStatus.authenticated && user != null;
+  bool get isGuest => status == AuthStatus.guest;
+  bool get canUseApp => isAuthenticated || isGuest;
   bool get isLoading => status == AuthStatus.loading;
 }
 
 enum AuthStatus {
-  unauthenticated,
+  guest,
   authenticated,
   loading,
   error,

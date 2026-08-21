@@ -1,21 +1,22 @@
-# Supabase setup (simple)
+# Fix Supabase (app + backend)
 
-1. Create a project at [supabase.com](https://supabase.com/dashboard)
-2. Put in `backend/.env`:
-   - `SUPABASE_URL`
-   - `SUPABASE_SERVICE_ROLE_KEY`
-   - `DATABASE_URL` (pooler)
-   - `DIRECT_URL` (direct)
-3. Put in `flutter/dart_defines.json`:
-   - `SUPABASE_URL`
-   - `SUPABASE_ANON_KEY`
-   - `API_BASE_URL`
-4. Sync schema:
+## Flutter (simple `.env`)
 
-```bash
-cd backend
-npx prisma db push
-npx prisma generate
+```powershell
+cd flutter
+copy .env.example .env
 ```
 
-5. Auth → Email → enable (disable “Confirm email” while testing)
+Put your keys in `flutter/.env`, then:
+
+```powershell
+flutter run
+flutter build apk --release
+```
+
+## Backend (Render + local)
+
+1. Supabase → Database → connection strings  
+2. Paste `DATABASE_URL` (6543 pooler) + `DIRECT_URL` (5432) into `backend/.env` and Render Environment  
+3. `node scripts/check-db.js` → `CONNECT_OK`  
+4. https://visionaid-r29c.onrender.com/api/ready → `database: true`

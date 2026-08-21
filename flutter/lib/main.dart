@@ -20,7 +20,7 @@ Future<void> main() async {
     return true;
   };
 
-  AppConfig.assertProductionConfig();
+  await AppConfig.load();
   await SupabaseService.initialize();
 
   runApp(const ProviderScope(child: VisionAidApp()));

@@ -134,6 +134,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_dotenv:
+    dependency: "direct main"
+    description:
+      name: flutter_dotenv
+      sha256: d41da11fb497314fbf89811ec30af02d1d898b47980a129f0a8c0a1720460ba2
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.0.1"
   flutter_lints:
     dependency: "direct dev"
     description:
@@ -142,6 +150,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.0.0"
+  flutter_plugin_android_lifecycle:
+    dependency: transitive
+    description:
+      name: flutter_plugin_android_lifecycle
+      sha256: "38d1c268de9097ff59cf0e844ac38759fc78f76836d37edad06fa21e182055a0"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.34"
   flutter_riverpod:
     dependency: "direct main"
     description:
@@ -155,6 +171,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_tts:
+    dependency: "direct main"
+    description:
+      name: flutter_tts
+      sha256: ce5eb209b40e95f2f4a1397116c87ab2fcdff32257d04ed7a764e75894c03775
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.2.5"
   flutter_web_plugins:
     dependency: transitive
     description: flutter
@@ -208,6 +232,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.2"
+  intl:
+    dependency: transitive
+    description:
+      name: intl
+      sha256: "1ca20c894b1717686a2319b8548763d812bc0aabdac580420a44c5178c57a867"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.20.3"
   json_annotation:
     dependency: transitive
     description:
@@ -248,6 +280,46 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "5.1.1"
+  local_auth:
+    dependency: "direct main"
+    description:
+      name: local_auth
+      sha256: ae6f382f638108c6becd134318d7c3f0a93875383a54010f61d7c97ac05d5137
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.1"
+  local_auth_android:
+    dependency: transitive
+    description:
+      name: local_auth_android
+      sha256: b201c006fa769c23386f89aa6837ec0eb8179fcfb212eadcf87b422b3f9a6a78
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.8"
+  local_auth_darwin:
+    dependency: transitive
+    description:
+      name: local_auth_darwin
+      sha256: "668ea65edaab17380956e9713f57e34f78ede505ca0cfd8d39db34e2f260bfee"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.1"
+  local_auth_platform_interface:
+    dependency: transitive
+    description:
+      name: local_auth_platform_interface
+      sha256: f98b8e388588583d3f781f6806e4f4c9f9e189d898d27f0c249b93a1973dd122
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.0"
+  local_auth_windows:
+    dependency: transitive
+    description:
+      name: local_auth_windows
+      sha256: be12c5b8ba5e64896983123655c5f67d2484ecfcc95e367952ad6e3bff94cb16
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.1"
   logging:
     dependency: transitive
     description:
@@ -377,7 +449,7 @@ packages:
     source: hosted
     version: "2.6.1"
   shared_preferences:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: shared_preferences
       sha256: c3025c5534b01739267eb7d76959bbc25a6d10f6988e1c2a3036940133dd10bf
@@ -445,6 +517,30 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.10.2"
+  speech_to_text:
+    dependency: "direct main"
+    description:
+      name: speech_to_text
+      sha256: "75587f7400f485fdf166beacd471549d98fe5d58e634f708916bb65dec05d6a4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "7.4.0"
+  speech_to_text_platform_interface:
+    dependency: transitive
+    description:
+      name: speech_to_text_platform_interface
+      sha256: a7e16e02853853ed7534ac2bde9a1c4f39c8879970a7974ac6ff832d4bdaa4b0
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.4.0"
+  speech_to_text_windows:
+    dependency: transitive
+    description:
+      name: speech_to_text_windows
+      sha256: "2d1d10565b23262386b453b33656299608dc7a66784453735d6c1318f13f44d7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.1"
   stack_trace:
     dependency: transitive
     description:

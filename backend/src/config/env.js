@@ -3,6 +3,16 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
+function withSsl(url) {
+  if (!url) {
+    return '';
+  }
+  if (/sslmode=/i.test(url)) {
+    return url;
+  }
+  return url.includes('?') ? `${url}&sslmode=require` : `${url}?sslmode=require`;
+}
+
 const envSchema = z.object({
   PORT: z.coerce.number().int().min(0).default(3000),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -25,9 +35,20 @@ if (!parsed.success) {
 const raw = parsed.data;
 const isProduction = raw.NODE_ENV === 'production';
 
+const databaseUrl = withSsl(raw.DATABASE_URL || '');
+const directUrl = withSsl(raw.DIRECT_URL || '');
+
+// Prisma reads process.env — keep normalized URLs there.
+if (databaseUrl) {
+  process.env.DATABASE_URL = databaseUrl;
+}
+if (directUrl) {
+  process.env.DIRECT_URL = directUrl;
+}
+
 if (isProduction) {
   const missing = [];
-  if (!raw.DATABASE_URL) missing.push('DATABASE_URL');
+  if (!databaseUrl) missing.push('DATABASE_URL');
   if (!raw.SUPABASE_URL) missing.push('SUPABASE_URL');
   if (!raw.SUPABASE_SERVICE_ROLE_KEY) missing.push('SUPABASE_SERVICE_ROLE_KEY');
 
@@ -46,8 +67,8 @@ const env = {
   port: raw.PORT,
   nodeEnv: raw.NODE_ENV,
   isProduction,
-  databaseUrl: raw.DATABASE_URL || '',
-  directUrl: raw.DIRECT_URL || '',
+  databaseUrl,
+  directUrl,
   supabaseUrl: raw.SUPABASE_URL || '',
   supabaseServiceRoleKey: raw.SUPABASE_SERVICE_ROLE_KEY || '',
   supabaseJwtSecret: raw.SUPABASE_JWT_SECRET || '',

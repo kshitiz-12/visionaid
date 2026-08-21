@@ -57,10 +57,11 @@ npm run dev
 
 ```bash
 cd flutter
-copy dart_defines.example.json dart_defines.json
-# fill SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL
+copy .env.example .env
+# fill SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL in .env
 flutter pub get
-flutter run --dart-define-from-file=dart_defines.json
+flutter run
+flutter build apk --release
 ```
 
 ### 4. Deploy backend (Render)

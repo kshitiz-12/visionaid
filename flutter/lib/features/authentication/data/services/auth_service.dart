@@ -93,7 +93,7 @@ class AuthService {
     try {
       await _supabase.auth.resetPasswordForEmail(
         email.trim(),
-        redirectTo: AppConfig.passwordResetRedirectTo,
+        redirectTo: 'io.supabase.visionaid://login-callback/',
       );
     } on supabase.AuthException catch (error) {
       throw AppException(_mapAuthMessage(error), code: 'AUTH_RESET_FAILED');
