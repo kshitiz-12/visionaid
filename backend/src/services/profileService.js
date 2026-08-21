@@ -2,19 +2,19 @@ const {
   findProfileByUserId,
   upsertProfileByUserId,
 } = require('../repositories/profileRepository');
-const { createAppError } = require('../utils/appError');
 
-async function getProfileService(userId) {
-  const profile = await findProfileByUserId(userId);
+async function getProfileService(userId, { email, fullName } = {}) {
+  const existing = await findProfileByUserId(userId);
 
-  if (!profile) {
-    throw createAppError('Profile not found', {
-      statusCode: 404,
-      code: 'PROFILE_NOT_FOUND',
-    });
+  if (existing) {
+    return existing;
   }
 
-  return profile;
+  // First authenticated access creates the profile row.
+  return upsertProfileByUserId(userId, {
+    email: email || undefined,
+    full_name: fullName || undefined,
+  });
 }
 
 async function updateProfileService(userId, updates) {

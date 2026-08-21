@@ -23,22 +23,34 @@ router.get('/ready', async (_req, res) => {
     database: false,
     auth: false,
   };
+  const reasons = [];
 
-  try {
-    const prisma = getPrisma();
-    if (prisma) {
-      await prisma.$queryRaw`SELECT 1`;
-      checks.database = true;
+  if (!process.env.DATABASE_URL) {
+    reasons.push('DATABASE_URL is not set on the server');
+  } else {
+    try {
+      const prisma = getPrisma();
+      if (!prisma) {
+        reasons.push('Prisma client could not start');
+      } else {
+        await prisma.$queryRaw`SELECT 1`;
+        checks.database = true;
+      }
+    } catch (error) {
+      console.error('[ready] database check failed:', error.message);
+      reasons.push(`Database connection failed: ${error.message}`);
     }
-  } catch (error) {
-    console.error('[ready] database check failed:', error.message);
   }
 
   try {
     const supabase = getSupabaseAdmin();
     checks.auth = Boolean(supabase);
+    if (!checks.auth) {
+      reasons.push('SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is missing');
+    }
   } catch (error) {
     console.error('[ready] auth check failed:', error.message);
+    reasons.push(`Auth config failed: ${error.message}`);
   }
 
   const ready = checks.database && checks.auth;
@@ -49,6 +61,7 @@ router.get('/ready', async (_req, res) => {
     data: {
       status: ready ? 'ready' : 'degraded',
       checks,
+      reasons: ready ? undefined : reasons,
       timestamp: new Date().toISOString(),
     },
     error: ready ? null : { code: 'SERVICE_NOT_READY' },

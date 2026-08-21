@@ -56,12 +56,18 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       final authUser = ref.read(authStateProvider).user;
       _nameController.text = authUser?.displayName ?? '';
       _email = authUser?.email;
-      _error = error.message;
+      _error =
+          'Using account info only (server profile unavailable). Auth still works.';
+      debugPrint('Profile API: ${error.message}');
     } catch (_) {
       if (!mounted) {
         return;
       }
-      _error = 'Unable to load profile from server.';
+      final authUser = ref.read(authStateProvider).user;
+      _nameController.text = authUser?.displayName ?? '';
+      _email = authUser?.email;
+      _error =
+          'Using account info only (server profile unavailable). Auth still works.';
     } finally {
       if (mounted) {
         setState(() => _loading = false);

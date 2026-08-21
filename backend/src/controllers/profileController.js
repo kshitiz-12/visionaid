@@ -12,7 +12,9 @@ const updateProfileSchema = z
 
 async function getProfile(req, res, next) {
   try {
-    const profile = await getProfileService(req.user.id);
+    const profile = await getProfileService(req.user.id, {
+      email: req.user.email,
+    });
 
     res.status(200).json({
       success: true,
