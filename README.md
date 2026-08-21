@@ -18,64 +18,54 @@ VisionAid++ is an AI-powered, voice-first vision assistant for visually impaired
 
 ```
 VisionAid/
-├── flutter/          # Mobile application (Dart / Flutter)
-├── backend/          # Node.js API for AI orchestration
-├── supabase/         # PostgreSQL migrations, RLS, local config
-└── docs/             # Architecture and API documentation
+├── flutter/   # Mobile app
+├── backend/   # Node API + Prisma
+└── docs/      # Guides
 ```
 
 ## Prerequisites
 
 - Flutter SDK 3.9+
 - Node.js 20+
-- Supabase project (cloud or local CLI)
+- Supabase project
 
 ## Quick start
 
-### 1. Supabase
-
-Create a Supabase project and apply migrations:
+### 1. Database
 
 ```bash
-supabase db push
+cd backend
+copy .env.example .env
+# fill SUPABASE_URL, SERVICE_ROLE_KEY, DATABASE_URL, DIRECT_URL
+npm install
+npx prisma db push
+npx prisma generate
 ```
 
-Or run migration SQL manually from `supabase/migrations/`.
+Full steps: [docs/supabase-setup.md](docs/supabase-setup.md)
 
 ### 2. Backend
 
 ```bash
-cd backend
-cp .env.example .env
-npm install          # runs prisma generate via postinstall
 npm run dev
 ```
 
-Health check: `GET http://127.0.0.1:3000/api/health`  
-Readiness: `GET http://127.0.0.1:3000/api/ready`
+- Health: `GET http://127.0.0.1:3000/api/health`
+- Ready: `GET http://127.0.0.1:3000/api/ready`
 
 ### 3. Flutter
 
 ```bash
 cd flutter
 copy dart_defines.example.json dart_defines.json
-# edit dart_defines.json with SUPABASE_URL + anon key
+# fill SUPABASE_URL, SUPABASE_ANON_KEY, API_BASE_URL
 flutter pub get
 flutter run --dart-define-from-file=dart_defines.json
 ```
 
-Full walkthrough: [docs/supabase-setup.md](docs/supabase-setup.md)
-
 ### 4. Deploy backend (Render)
 
-See [docs/deploy.md](docs/deploy.md). Summary:
-
-1. Push repo to GitHub
-2. Render → Blueprint (uses `render.yaml`) or Web Service with root `backend`
-3. Paste Supabase URL, service-role key, `DATABASE_URL`, `DIRECT_URL` in Render env
-4. Confirm `https://YOUR-SERVICE.onrender.com/api/health` and `/api/ready`
-5. Set Flutter `API_BASE_URL` to that Render URL
-
+See [docs/deploy.md](docs/deploy.md).
 ## Core product principle
 
 The research contribution is the **Adaptive Context-Aware Decision Engine** — it scores detections by confidence, distance, motion, user intent, object importance, and navigation risk before speaking, reducing cognitive overload.
@@ -91,12 +81,11 @@ The research contribution is the **Adaptive Context-Aware Decision Engine** — 
 ## Production checklist
 
 - [ ] Set `NODE_ENV=production` on the backend host
-- [ ] Fill `DATABASE_URL`, `DIRECT_URL`, Supabase keys, and `CORS_ORIGINS`
-- [ ] Apply all SQL under `supabase/migrations/` (including FORCE RLS)
-- [ ] Flutter release build uses real `SUPABASE_URL` / `SUPABASE_ANON_KEY` and `DEBUG_MODE=false`
+- [ ] Fill `DATABASE_URL`, `DIRECT_URL`, Supabase keys
+- [ ] `npx prisma db push` + `npx prisma generate`
+- [ ] Flutter uses real `SUPABASE_URL` / `SUPABASE_ANON_KEY`
 - [ ] Verify `GET /api/health` and `GET /api/ready`
-- [ ] Confirm email auth settings (enable confirmations in production)
-- [ ] Deploy backend (e.g. Render) with health check path `/api/health`
+- [ ] Deploy backend (Render) with health check `/api/health`
 
 ## Git strategy
 

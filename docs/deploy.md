@@ -21,9 +21,13 @@ Do **not** commit:
 - `backend/.env`
 - `flutter/dart_defines.json`
 
-## 2. Apply Supabase SQL (once)
+## 2. Database setup
 
-In Supabase SQL Editor, run migrations in order (see `docs/supabase-setup.md`).
+```bash
+cd backend
+npx prisma db push
+npx prisma generate
+```
 
 ## 3. Deploy backend on Render
 

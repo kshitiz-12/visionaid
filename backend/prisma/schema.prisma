@@ -1,6 +1,6 @@
 // Prisma schema for VisionAid++ (Supabase PostgreSQL)
-// Schema migrations are managed in supabase/migrations/.
-// Run `npm run db:generate` after schema changes.
+// npx prisma db push
+// npx prisma generate
 
 generator client {
   provider = "prisma-client-js"
@@ -45,13 +45,14 @@ model EmergencyContact {
 }
 
 model FavoriteObject {
-  id          String                       @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
-  userId      String                       @map("user_id") @db.Uuid
-  objectName  String                       @map("object_name")
+  id          String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  objectName  String   @map("object_name")
   description String?
-  embedding   Unsupported("vector(512)")?
-  createdAt   DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime                     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  /// Reserved for future similarity search (store as JSON array for now)
+  embedding   Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
 

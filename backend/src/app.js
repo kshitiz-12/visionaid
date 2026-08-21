@@ -37,6 +37,22 @@ app.use(express.urlencoded({ extended: true }));
 app.use(requestLogger);
 app.use(rateLimiter);
 
+app.get('/', (_req, res) => {
+  res.json({
+    success: true,
+    message: 'VisionAid++ API',
+    data: {
+      health: '/api/health',
+      ready: '/api/ready',
+    },
+    error: null,
+  });
+});
+
+app.get('/health', (_req, res) => {
+  res.redirect(302, '/api/health');
+});
+
 app.use('/api', routes);
 app.use(notFoundHandler);
 app.use(errorHandler);

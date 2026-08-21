@@ -4,7 +4,7 @@
   "description": "VisionAid++ Node.js API for AI orchestration and secure server-side operations",
   "main": "server.js",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "start": "node server.js",
