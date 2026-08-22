@@ -1,0 +1,3 @@
+# Local Supabase CLI is optional.
+# Production database is hosted on Supabase Cloud.
+# Schema: backend/prisma/schema.prisma and supabase/migrations/

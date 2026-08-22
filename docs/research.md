@@ -1,76 +1,32 @@
 # VisionAid++ Research Notes
 
-## Research contribution
+## Contribution
 
 **Adaptive Context-Aware Decision Engine**
 
-VisionAid++ does not announce every object detected by YOLO. Instead, a dedicated Context Engine module scores each detection and speaks only when the priority exceeds a threshold.
+Do not announce every detector output. Score detections and speak only high-priority / hazard / intent-matched information, with announcement cooldown (`SpeakGate`).
 
-## Problem statement
+## Implemented (not fabricated)
 
-Continuous object announcements create cognitive overload for visually impaired users. Existing vision apps often read everything the model detects, which is noisy and unusable in real environments.
+- Priority formula: `flutter/lib/core/utils/context_priority_score.dart` (unit tested)
+- Ranking + spoken filtering: `flutter/lib/features/context_engine/`
+- Duplicate suppression: `flutter/lib/core/utils/speak_gate.dart`
+- Live camera + ML Kit labeling/detection (not YOLOv8 TFLite weights yet)
+- Tests: intent, context, speak gate, voice repository
 
-## Proposed pipeline
+## Baseline vs VisionAid++ (experiment — not run)
 
-```
-Camera
-  ↓
-YOLOv8 Nano (on-device, TFLite)
-  ↓
-Object Detection results
-  ↓
-Context Engine (testable module)
-  ↓
-Risk Calculation
-  ↓
-Priority Ranking
-  ↓
-Voice Response (TTS)
-```
+| Arm | Behavior |
+|-----|----------|
+| Baseline | Speak all detections every frame |
+| VisionAid++ | Context score + hazard first + cooldown |
 
-## Priority score factors (planned)
+**No user-study numbers exist in this repo.** Do not invent them.
 
-| Factor | Description |
-|--------|-------------|
-| confidence | Model detection confidence |
-| distance | Estimated distance (ARCore depth) |
-| motion | Approaching vs static object |
-| user intent | Active voice command context |
-| object importance | User favorites, learned preferences |
-| navigation risk | Obstacles in travel path |
-| environment | Indoor vs outdoor mode |
-| historical context | Recent detections, location memory |
+## Planned measurements
 
-## Foundation status
+Latency, announcement count, duplicates, risk recall, battery, task completion. Collect only with consent; store metadata not frames.
 
-The foundation includes a stub priority scoring utility at `flutter/lib/core/utils/context_priority_score.dart` with unit tests. Full Context Engine implementation is a **future phase**.
+## Not in scope yet
 
-## Privacy constraints
-
-Research data collection must respect user privacy:
-
-- Camera frames remain on device by default
-- Detection history stores metadata only (object name, confidence, distance, risk score)
-- Cloud processing (Gemini) is optional and clearly disclosed
-- No sensitive images in logs or research exports without explicit consent
-
-## Evaluation metrics (planned)
-
-- Reduction in spoken announcements vs naive baseline
-- Task completion time in navigation scenarios
-- User-reported cognitive load (subjective scale)
-- False negative rate for high-risk obstacles
-
-## Related work areas
-
-- Accessible mobile navigation for blind users
-- On-device object detection with YOLO
-- Attention-based alert prioritization
-- Multimodal context fusion (vision + voice + location)
-
-## Next research steps
-
-1. Implement full Context Engine module with configurable weights
-2. Collect labeled scenarios for priority calibration
-3. Integrate ARCore distance into risk scoring
-4. Compare naive vs context-aware announcement rates in user studies
+Persistent spatial house map. YOLO Nano `.tflite` swap. ARCore meters. Gemini descriptions.

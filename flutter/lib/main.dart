@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'core/config/app_config.dart';
 import 'core/router/app_router.dart';
@@ -22,6 +23,7 @@ Future<void> main() async {
 
   await AppConfig.load();
   await SupabaseService.initialize();
+  await WakelockPlus.enable();
 
   runApp(const ProviderScope(child: VisionAidApp()));
 }

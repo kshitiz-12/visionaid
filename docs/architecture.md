@@ -2,85 +2,59 @@
 
 ## Design principles
 
-### 1. Feature-first Clean Architecture
+1. **Voice-first** — a completely blind user living alone must complete core tasks without seeing the screen.
+2. **Feature-first Clean Architecture** — `data` / `domain` / `presentation` per feature; Riverpod injection.
+3. **On-device by default** — camera frames stay on the phone unless the user opts into cloud AI.
+4. **Adaptive Context Engine** — do not speak every detection; rank by risk, intent, and cooldown.
+5. **Independent-living fallbacks** — if internet, Gemini, or cloud auth fail, local voice + vision + emergency contact still work.
 
-The codebase is split into feature modules. Each feature contains layered responsibilities:
+## Current product (honest)
 
-- **data** — repositories, services, models, DTOs
-- **domain** — entities, repository contracts, business rules
-- **presentation** — pages, widgets, Riverpod providers
+The mobile app is **login-free** today: language → voice profile (name + emergency contact on device) → Voice Home.
 
-This keeps business logic isolated from UI and infrastructure.
-
-### 2. Dependency inversion
-
-Upper layers depend on abstractions. Repositories are interfaces in the domain layer; concrete implementations live in the data layer and are injected via Riverpod providers.
-
-### 3. Supabase as primary backend platform
-
-Supabase handles:
-
-- Authentication (email/password initially)
-- PostgreSQL database with Row Level Security
-- Storage for user-specific files when needed
-
-The Node.js backend is **not** the primary database layer for the mobile client. It uses **Prisma** as the ORM to access the same Supabase PostgreSQL database for server-side operations (AI orchestration, complex queries, admin tasks). **Supabase Auth** remains the identity provider; JWTs are verified on protected routes.
-
-### 4. Voice-first interaction model
-
-Voice is the primary mode of interaction. Major flows must remain accessible without visual input.
-
-### 5. Privacy-first inference
-
-Object detection and OCR run on-device. Camera frames are not uploaded by default. Cloud processing (Gemini) is opt-in and clearly separated from local inference.
-
-### 6. Adaptive context-aware prioritization
-
-The Context Engine (future phase) filters detected objects by priority score before speaking. This is the product's research contribution.
+**Phone OTP / persistent Supabase sessions** are specified for a later auth phase. They are **not** implemented in Flutter yet. Cloud tables + RLS exist for when that phase ships.
 
 ## System layers
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Flutter (Mobile)                      │
-│  presentation → domain → data → core                    │
-│  On-device: YOLO, ML Kit OCR, STT, TTS                   │
-└───────────────┬─────────────────────┬───────────────────┘
-                │ Supabase SDK        │ HTTP (JWT)
-                ▼                     ▼
-┌───────────────────────┐   ┌─────────────────────────────┐
-│       Supabase        │   │   Node.js + Express         │
-│  Auth / Postgres /    │   │   AI orchestration, Gemini  │
-│  Storage / RLS        │   │   JWT verification          │
-└───────────────────────┘   └─────────────────────────────┘
+Flutter (voice, camera, ML Kit, Context Engine, local prefs)
+    │ optional HTTP + JWT          │ optional anon SDK
+    ▼                              ▼
+Node.js Express (helmet, CORS,     Supabase Postgres + Auth
+rate limit, Prisma, /api/health)   RLS: auth.uid() = user_id
 ```
 
-## Flutter layer
-
-| Layer | Responsibility |
-|-------|----------------|
-| presentation | Pages, widgets, providers |
-| domain | Entities, repository contracts |
-| data | Supabase/API implementations |
-| core | Config, services, theme, utils |
-
-## Backend layer
-
-| Layer | Responsibility |
-|-------|----------------|
-| routes | HTTP endpoint definitions |
-| controllers | Request/response handling |
-| services | Business logic |
-| repositories | Prisma data access (PostgreSQL) |
-| middlewares | Auth, logging, rate limiting, errors |
-| ai | Vision, OCR, context, Gemini modules (future) |
-
-## Detection pipeline (planned)
+## Detection pipeline (implemented)
 
 ```
-Camera → YOLO → Object Detection → Context Engine → Risk Calculation → Priority Ranking → Voice Response
+Speech → Intent Engine → live camera stream
+  → ML Kit objects + image labels (YOLO TFLite swappable, not bundled)
+  → Context Engine (priority + speak gate)
+  → TTS (hazards / named objects / scene change only)
 ```
+
+OCR (`Read this`) uses a still frame + ML Kit Text Recognition.
+
+Gemini, ARCore, Google Maps navigation, food ordering, and persistent spatial maps are **not** implemented.
+
+## Flutter
+
+| Layer | Role |
+|-------|------|
+| presentation | Pages (voice home, live vision, settings, onboarding) |
+| domain | Intent, context, OCR, vision contracts |
+| data | ML Kit, STT/TTS, emergency caller |
+| core | Config, router, theme, pipeline |
+
+## Backend
+
+| Layer | Role |
+|-------|------|
+| `GET /api/health` | Liveness |
+| `GET /api/ready` | DB + auth config |
+| `/api/profile` | JWT-protected upsert (unused by guest app) |
+| Prisma | Same Postgres as Supabase |
 
 ## Deployment
 
-Initial deployment target: **Render** for the Node.js backend. Supabase is hosted on Supabase Cloud.
+Render for Node. Supabase Cloud for Postgres.

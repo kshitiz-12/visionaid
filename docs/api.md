@@ -15,9 +15,9 @@ All responses follow:
 
 ## Authentication
 
-Authentication is handled by **Supabase Auth** on the Flutter client (email/password).
+Flutter onboarding is **voice + on-device prefs** (no OTP in the current app).
 
-Protected backend routes require:
+When a Supabase session exists, protected backend routes require:
 
 ```
 Authorization: Bearer <supabase_access_token>
@@ -25,7 +25,7 @@ Authorization: Bearer <supabase_access_token>
 
 The Node.js backend verifies tokens via `supabase.auth.getUser(token)`.
 
-There are **no** custom `/auth/login` or `/auth/register` endpoints on Node.js.
+There are **no** custom `/auth/login` Node endpoints. Phone OTP is a future auth phase.
 
 ## Health
 
@@ -67,6 +67,32 @@ Readiness probe. Returns 200 when database and auth config are available; otherw
 }
 ```
 
+## Companion (public, rate-limited)
+
+Requires `OPENAI_API_KEY` and/or `GEMINI_API_KEY` on the server. OpenAI is used first when both are set. Natural voice (`POST /speak`) needs OpenAI.
+
+### GET /api/assistant/status
+
+```json
+{ "data": { "chat": true, "naturalVoice": true } }
+```
+
+### POST /api/assistant/chat
+
+```json
+{
+  "message": "What should I cook tonight?",
+  "language": "en",
+  "userName": "Aditya",
+  "sceneSummary": "Stop. Person is nearby.",
+  "history": [{ "role": "user", "content": "Hi" }, { "role": "assistant", "content": "Hey." }]
+}
+```
+
+### POST /api/assistant/speak
+
+JSON `{ "text": "...", "language": "hi" }` → `audio/mpeg`.
+
 ## Profile
 
 ### GET /api/profile
@@ -92,7 +118,7 @@ Requires Supabase JWT.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | /api/scene | Gemini scene understanding |
+| POST | /api/scene | (optional) extra vision — companion uses scene facts instead |
 | POST | /api/context | Context engine scoring |
 | GET | /api/history/detections | Detection history |
 | GET | /api/history/voice | Voice command history |

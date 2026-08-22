@@ -23,6 +23,11 @@ const envSchema = z.object({
   SUPABASE_JWT_SECRET: z.string().optional().or(z.literal('')),
   CORS_ORIGINS: z.string().optional().or(z.literal('')),
   GEMINI_API_KEY: z.string().optional().or(z.literal('')),
+  OPENAI_API_KEY: z.string().optional().or(z.literal('')),
+  OPENAI_MODEL: z.string().optional().or(z.literal('')),
+  OPENAI_TTS_MODEL: z.string().optional().or(z.literal('')),
+  OPENAI_TTS_VOICE: z.string().optional().or(z.literal('')),
+  GEMINI_MODEL: z.string().optional().or(z.literal('')),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -74,6 +79,11 @@ const env = {
   supabaseJwtSecret: raw.SUPABASE_JWT_SECRET || '',
   corsOrigins,
   geminiApiKey: raw.GEMINI_API_KEY || '',
+  openaiApiKey: raw.OPENAI_API_KEY || '',
+  openaiModel: raw.OPENAI_MODEL || 'gpt-4o-mini',
+  openaiTtsModel: raw.OPENAI_TTS_MODEL || 'tts-1-hd',
+  openaiTtsVoice: raw.OPENAI_TTS_VOICE || 'nova',
+  geminiModel: raw.GEMINI_MODEL || 'gemini-2.5-flash',
 };
 
 module.exports = env;

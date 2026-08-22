@@ -1,84 +1,62 @@
+import '../../../intent/data/intent_engine_impl.dart';
+import '../../../intent/domain/entities/user_intent.dart';
 import '../../domain/entities/voice_command.dart';
 import '../../domain/entities/voice_context.dart';
 import '../../domain/repositories/voice_repository.dart';
 
 class VoiceRepositoryImpl implements VoiceRepository {
+  VoiceRepositoryImpl({IntentEngineImpl? intentEngine})
+      : _intentEngine = intentEngine ?? IntentEngineImpl();
+
+  final IntentEngineImpl _intentEngine;
+
   @override
   Future<VoiceCommand> classifyCommand(String spokenText) async {
-    final normalized = spokenText.trim();
-    if (normalized.isEmpty) {
-      throw StateError('Spoken text cannot be empty');
-    }
-
-    final lower = normalized.toLowerCase();
-    String intent = 'general';
-    bool actionable = true;
-    double confidence = 0.72;
-
-    if (lower.contains('emergency') || lower.contains('help') || lower.contains('danger')) {
-      intent = 'emergency';
-      confidence = 0.97;
-    } else if (lower.contains('navigate') || lower.contains('go to') || lower.contains('find route')) {
-      intent = 'navigation';
-      confidence = 0.9;
-    } else if (lower.contains('read') || lower.contains('what does it say') || lower.contains('read text')) {
-      intent = 'read_text';
-      confidence = 0.88;
-    } else if (lower.contains('where is') || lower.contains('find')) {
-      intent = 'find_object';
-      confidence = 0.84;
-    }
-
-    if (lower.contains('stop') || lower.contains('cancel')) {
-      actionable = false;
-      confidence = 0.65;
-    }
-
+    final intent = await _intentEngine.classify(spokenText);
     return VoiceCommand(
-      rawText: normalized,
-      intent: intent,
-      confidence: confidence,
-      isActionable: actionable,
+      rawText: intent.rawText.isEmpty ? spokenText.trim() : intent.rawText,
+      intent: _legacyIntentName(intent.type),
+      confidence: intent.confidence,
+      isActionable: intent.isActionable,
     );
   }
 
   @override
   Future<VoiceContext> buildContext({required String spokenText}) async {
+    final intent = await _intentEngine.classify(spokenText);
     final lower = spokenText.trim().toLowerCase();
+    final legacy = _legacyIntentName(intent.type);
 
-    String intent = 'general';
-    if (lower.contains('navigate')) {
-      intent = 'navigation';
-    } else if (lower.contains('read')) {
-      intent = 'read_text';
-    } else if (lower.contains('emergency') || lower.contains('danger')) {
-      intent = 'emergency';
-    } else if (lower.contains('where is') || lower.contains('find')) {
-      intent = 'find_object';
-    }
-
-    final urgency = intent == 'emergency'
+    final urgency = intent.type == IntentType.emergency
         ? 'high'
-        : (intent == 'navigation' || intent == 'read_text' ? 'medium' : 'low');
-
-    String target = 'environment';
-    if (lower.contains('sign')) {
-      target = 'sign';
-    } else if (lower.contains('door')) {
-      target = 'door';
-    } else if (lower.contains('exit')) {
-      target = 'exit';
-    } else if (lower.contains('car')) {
-      target = 'vehicle';
-    }
+        : (intent.type == IntentType.navigation ||
+                intent.type == IntentType.readText
+            ? 'medium'
+            : 'low');
 
     return VoiceContext(
-      intent: intent,
+      intent: legacy,
       location: lower.contains('outside') ? 'outdoor' : 'indoor',
-      userMood: lower.contains('panic') || lower.contains('danger') ? 'alert' : 'focused',
+      userMood: intent.type == IntentType.emergency ? 'alert' : 'focused',
       environment: lower.contains('outside') ? 'outdoor' : 'indoor',
       urgency: urgency,
-      target: target,
+      target: intent.target.isEmpty
+          ? (intent.contactName.isEmpty ? 'environment' : intent.contactName)
+          : intent.target,
     );
   }
+
+  String _legacyIntentName(IntentType type) => switch (type) {
+        IntentType.emergency => 'emergency',
+        IntentType.navigation => 'navigation',
+        IntentType.readText => 'read_text',
+        IntentType.findObject => 'find_object',
+        IntentType.sceneDescribe => 'scene_describe',
+        IntentType.communication => 'communication',
+        IntentType.help => 'help',
+        IntentType.conversation => 'conversation',
+        IntentType.cancel => 'cancel',
+        IntentType.quit => 'quit',
+        IntentType.unknown => 'general',
+      };
 }

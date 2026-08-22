@@ -64,8 +64,11 @@ function errorHandler(error, _req, res, _next) {
     console.error('[error]', mapped);
   }
 
-  const message =
-    statusCode >= 500 && isProduction
+  const hideDetails = statusCode >= 500 && isProduction &&
+    code !== 'AI_NOT_CONFIGURED' &&
+    code !== 'TTS_NOT_CONFIGURED';
+
+  const message = hideDetails
       ? 'Internal server error'
       : mapped.message || 'Internal server error';
 

@@ -45,6 +45,21 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>VisionAid uses the camera to describe what is in front of you and read text aloud.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>VisionAid uses the microphone so you can speak commands.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>VisionAid converts your speech into commands on device.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>VisionAid looks up people in your phone contacts so you can call, text, or WhatsApp them by name.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tel</string>
+		<string>sms</string>
+		<string>whatsapp</string>
+		<string>https</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

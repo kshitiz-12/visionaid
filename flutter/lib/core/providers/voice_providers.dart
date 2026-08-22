@@ -5,7 +5,7 @@ import '../services/stt_service.dart';
 import '../services/tts_service.dart';
 
 final textToSpeechProvider = Provider<TextToSpeechService>((ref) {
-  return AndroidTextToSpeechService();
+  return HumanizedTextToSpeechService();
 });
 
 final speechToTextProvider = Provider<SpeechToTextService>((ref) {

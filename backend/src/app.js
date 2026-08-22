@@ -44,6 +44,7 @@ app.get('/', (_req, res) => {
     data: {
       health: '/api/health',
       ready: '/api/ready',
+      assistant: '/api/assistant/status',
     },
     error: null,
   });

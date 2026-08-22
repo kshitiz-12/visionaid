@@ -1,0 +1,256 @@
+import '../../features/context_engine/domain/services/context_engine.dart';
+import '../../features/emergency/data/emergency_service.dart';
+import '../../features/intent/domain/entities/user_intent.dart';
+import '../../features/intent/domain/services/intent_engine.dart';
+import '../../features/ocr/domain/services/ocr_engine.dart';
+import '../../features/vision/domain/services/object_detector_service.dart';
+import '../exceptions/app_exception.dart';
+import '../network/companion_client.dart';
+import 'camera_capture_service.dart';
+import 'conversation_memory.dart';
+import 'pipeline_result.dart';
+import 'user_prefs.dart';
+
+/// Intent → local actions (call / emergency / OCR / vision) or cloud companion.
+class AssistantPipeline {
+  AssistantPipeline({
+    required this.intentEngine,
+    required this.camera,
+    required this.detector,
+    required this.ocr,
+    required this.contextEngine,
+    required this.emergency,
+    required this.companion,
+    required this.memory,
+  });
+
+  final IntentEngine intentEngine;
+  final CameraCaptureService camera;
+  final ObjectDetectorService detector;
+  final OcrEngine ocr;
+  final ContextEngine contextEngine;
+  final EmergencyService emergency;
+  final CompanionClient companion;
+  final ConversationMemory memory;
+
+  Future<PipelineResult> handleSpoken(String spokenText) async {
+    final intent = await intentEngine.classify(spokenText);
+
+    if (!intent.isActionable || intent.type == IntentType.cancel) {
+      return PipelineResult(
+        intent: intent,
+        spokenReply: 'Okay, cancelled.',
+      );
+    }
+
+    switch (intent.type) {
+      case IntentType.help:
+      case IntentType.conversation:
+      case IntentType.unknown:
+        return _chat(intent);
+      case IntentType.emergency:
+        final callMsg = await emergency.placeCall(
+          contactName: intent.contactName,
+        );
+        return PipelineResult(
+          intent: intent,
+          spokenReply: 'Emergency. $callMsg',
+          isAlert: true,
+        );
+      case IntentType.communication:
+        if (intent.commAction == CommAction.sms) {
+          if (intent.messageBody.isEmpty) {
+            return PipelineResult(
+              intent: intent,
+              spokenReply: intent.contactName.isEmpty
+                  ? 'Who should I text?'
+                  : 'What should I say to ${intent.contactName}?',
+            );
+          }
+          final smsMsg = await emergency.sendSms(
+            contactName: intent.contactName,
+            message: intent.messageBody,
+          );
+          return PipelineResult(intent: intent, spokenReply: smsMsg);
+        }
+        if (intent.commAction == CommAction.whatsapp) {
+          if (intent.messageBody.isEmpty) {
+            return PipelineResult(
+              intent: intent,
+              spokenReply: intent.contactName.isEmpty
+                  ? 'Who should I WhatsApp?'
+                  : 'What should I say to ${intent.contactName} on WhatsApp?',
+            );
+          }
+          final wa = await emergency.sendWhatsApp(
+            contactName: intent.contactName,
+            message: intent.messageBody,
+          );
+          return PipelineResult(intent: intent, spokenReply: wa);
+        }
+        if (intent.contactName.isEmpty) {
+          return PipelineResult(
+            intent: intent,
+            spokenReply: 'Who should I call?',
+          );
+        }
+        final callMsg = await emergency.placeCall(
+          contactName: intent.contactName,
+        );
+        return PipelineResult(intent: intent, spokenReply: callMsg);
+      case IntentType.quit:
+        return PipelineResult(
+          intent: intent,
+          spokenReply: 'Closing VisionAid. Goodbye.',
+        );
+      case IntentType.readText:
+        return _runOcr(intent);
+      case IntentType.navigation:
+      case IntentType.findObject:
+      case IntentType.sceneDescribe:
+        return _runVisionThenChat(intent);
+      case IntentType.cancel:
+        return PipelineResult(intent: intent, spokenReply: 'Okay, cancelled.');
+    }
+  }
+
+  Future<String> _sceneFacts(UserIntent intent) async {
+    try {
+      final path = await camera.captureStill();
+      final detections = await detector.detect(path);
+      final maps = detections.map((d) => d.toMap()).toList();
+      final decision = contextEngine.evaluate(
+        detections: maps,
+        intentTarget: intent.target,
+      );
+      final labels = maps
+          .map((m) => m['label'] as String? ?? '')
+          .where((l) => l.isNotEmpty)
+          .take(8)
+          .join(', ');
+      final facts =
+          '${decision.spokenMessage}. Detected: ${labels.isEmpty ? 'none' : labels}.';
+      memory.rememberScene(facts);
+      return facts;
+    } catch (_) {
+      return memory.lastScene;
+    }
+  }
+
+  bool _needsFreshScene(UserIntent intent) {
+    if (intent.type == IntentType.sceneDescribe ||
+        intent.type == IntentType.findObject ||
+        intent.type == IntentType.navigation) {
+      return true;
+    }
+    final t = intent.rawText.toLowerCase();
+    return RegExp(
+          r'\b(in front|ahead|around me|do you see|look|purse|handbag|bag|door|stairs|left|right|what is that)\b',
+        ).hasMatch(t) ||
+        RegExp(r'सामने|आसपास|पर्स|बैग|कहाँ|दरवाजा').hasMatch(t);
+  }
+
+  Future<PipelineResult> _chat(UserIntent intent) async {
+    var scene = memory.lastScene;
+    if (_needsFreshScene(intent)) {
+      scene = await _sceneFacts(intent);
+    }
+
+    final language = AppLanguage.fromCode(await UserPrefs.getLanguageCode());
+    final name = await UserPrefs.getName();
+
+    try {
+      final reply = await companion.chat(
+        message: intent.rawText,
+        language: language.code,
+        userName: name,
+        sceneSummary: scene,
+        history: memory.history,
+      );
+      memory.addTurn(user: intent.rawText, assistant: reply.text);
+      return PipelineResult(intent: intent, spokenReply: reply.text);
+    } on AppException catch (error) {
+      if (error.code == 'AI_NOT_CONFIGURED' ||
+          error.code == 'NETWORK_ERROR' ||
+          error.code == 'AI_UPSTREAM') {
+        return PipelineResult(
+          intent: intent,
+          spokenReply: language.code == 'hi'
+              ? 'अभी क्लाउड सहायक तैयार नहीं है। कॉल, देखो, या इमरजेंसी कह सकते हो।'
+              : 'I cannot reach the cloud assistant right now. You can still say call, look ahead, or emergency.',
+        );
+      }
+      return PipelineResult(
+        intent: intent,
+        spokenReply: error.message,
+        isAlert: true,
+      );
+    } catch (error) {
+      return PipelineResult(
+        intent: intent,
+        spokenReply: _friendlyError(error),
+        isAlert: true,
+      );
+    }
+  }
+
+  Future<PipelineResult> _runVisionThenChat(UserIntent intent) async {
+    await _sceneFacts(intent);
+    return _chat(intent);
+  }
+
+  Future<PipelineResult> _runOcr(UserIntent intent) async {
+    try {
+      final path = await camera.captureStill();
+      final text = await ocr.recognizeText(path);
+      if (text.isEmpty) {
+        return PipelineResult(
+          intent: intent,
+          spokenReply:
+              'I could not read any text. Hold the phone steady and point at the print.',
+        );
+      }
+
+      final clipped = text.length > 400 ? '${text.substring(0, 400)}…' : text;
+      memory.rememberScene('Printed text: $clipped');
+      final language = AppLanguage.fromCode(await UserPrefs.getLanguageCode());
+      try {
+        final reply = await companion.chat(
+          message:
+              'Please read this printed text aloud in a natural way, then say if anything important stands out. Text: $clipped',
+          language: language.code,
+          userName: await UserPrefs.getName(),
+          sceneSummary: memory.lastScene,
+          history: memory.history,
+        );
+        memory.addTurn(user: intent.rawText, assistant: reply.text);
+        return PipelineResult(intent: intent, spokenReply: reply.text);
+      } catch (_) {
+        return PipelineResult(
+          intent: intent,
+          spokenReply: 'It says: $clipped',
+        );
+      }
+    } catch (error) {
+      return PipelineResult(
+        intent: intent,
+        spokenReply: _friendlyError(error),
+        isAlert: true,
+      );
+    }
+  }
+
+  String _friendlyError(Object error) {
+    final raw = error.toString().replaceFirst('Bad state: ', '');
+    if (raw.toLowerCase().contains('camera') ||
+        raw.toLowerCase().contains('permission')) {
+      return raw;
+    }
+    return 'Something went wrong. $raw';
+  }
+
+  Future<void> dispose() async {
+    await detector.dispose();
+    await ocr.dispose();
+  }
+}

@@ -6,21 +6,24 @@ VisionAid++ is an AI-powered, voice-first vision assistant for visually impaired
 
 - **Flutter** mobile app with feature-first Clean Architecture
 - **Riverpod** state management and **GoRouter** for navigation
-- **Supabase** for authentication, PostgreSQL database, storage, and Row Level Security
+- **No login** — language + on-device profile, then voice home
+- **Supabase** Postgres (backend/Prisma); Flutter uses anon key only if cloud features are enabled
 - **Prisma** ORM in the Node.js backend for server-side PostgreSQL access
-- **Node.js + Express** backend for AI orchestration, Gemini API, and secure server-side operations
-- **YOLOv8 Nano + TensorFlow Lite** on-device for object detection (planned)
-- **Google ML Kit OCR** for offline text extraction (planned)
-- **Google Maps + ARCore** for navigation and depth-aware alerts (planned)
+- **Node.js + Express** backend for health, profiles, and optional AI orchestration
+- **On-device vision** via ML Kit Object Detection (YOLO TFLite-swappable)
+- **On-device OCR** via Google ML Kit Text Recognition
+- **Context Engine** ranks and filters what to speak
+- **Emergency** opens dialer/SMS to the saved contact
 - **Gemini API** only for advanced scene understanding (optional, graceful degradation)
 
 ## Directory structure
 
 ```
 VisionAid/
-├── flutter/   # Mobile app
-├── backend/   # Node API + Prisma
-└── docs/      # Guides
+├── flutter/          # Mobile app
+├── backend/          # Node API + Prisma
+├── supabase/         # SQL migrations + RLS
+└── docs/
 ```
 
 ## Prerequisites
@@ -64,6 +67,8 @@ flutter run
 flutter build apk --release
 ```
 
+Exact voice pipeline: [docs/product-flow.md](docs/product-flow.md)
+
 ### 4. Deploy backend (Render)
 
 See [docs/deploy.md](docs/deploy.md).
@@ -96,4 +101,4 @@ The research contribution is the **Adaptive Context-Aware Decision Engine** — 
 
 ## Status
 
-Foundation setup complete: Supabase schema, RLS, Flutter shell, Node.js health API, and documentation scaffolding are in place.
+**Foundation + early product loop exist.** Guest voice onboarding, live vision, OCR, context filtering, and emergency call are in Flutter. Cloud **phone OTP is not built**. Schema/RLS live in Prisma + `supabase/migrations/`.

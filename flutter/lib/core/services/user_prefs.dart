@@ -6,6 +6,7 @@ class UserPrefs {
   static const _languageKey = 'app_language';
   static const _nameKey = 'user_name';
   static const _emergencyKey = 'emergency_contact';
+  static const _emergencyNameKey = 'emergency_contact_name';
   static const _voiceSpeedKey = 'voice_speed';
   static const _setupDoneKey = 'setup_complete';
 
@@ -51,6 +52,16 @@ class UserPrefs {
     await prefs.setString(_emergencyKey, phone.trim());
   }
 
+  static Future<String> getEmergencyContactName() async {
+    final prefs = await _prefs;
+    return prefs.getString(_emergencyNameKey) ?? '';
+  }
+
+  static Future<void> setEmergencyContactName(String name) async {
+    final prefs = await _prefs;
+    await prefs.setString(_emergencyNameKey, name.trim());
+  }
+
   static Future<double> getVoiceSpeed() async {
     final prefs = await _prefs;
     return prefs.getDouble(_voiceSpeedKey) ?? 0.45;
@@ -72,6 +83,9 @@ class AppLanguage {
   final String code;
   final String label;
   final String ttsLocale;
+
+  /// speech_to_text uses underscore locales.
+  String get sttLocale => code == 'hi' ? 'hi_IN' : 'en_US';
 
   static const english = AppLanguage(
     code: 'en',

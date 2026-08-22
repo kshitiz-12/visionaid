@@ -13,11 +13,13 @@ datasource db {
 }
 
 model Profile {
-  id        String   @id @db.Uuid
-  fullName  String?  @map("full_name")
-  email     String?
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                 String   @id @db.Uuid
+  fullName           String?  @map("full_name")
+  phone              String?
+  email              String?
+  preferredLanguage  String?  @map("preferred_language")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   emergencyContacts EmergencyContact[]
   favoriteObjects   FavoriteObject[]
@@ -36,7 +38,9 @@ model EmergencyContact {
   name         String
   phone        String
   relationship String?
+  priority     Int      @default(1)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -66,7 +70,9 @@ model DetectionHistory {
   objectName String   @map("object_name")
   confidence Float?
   distance   Float?
+  direction  String?
   riskScore  Float?   @map("risk_score")
+  context    String?
   detectedAt DateTime @default(now()) @map("detected_at") @db.Timestamptz(6)
 
   profile Profile @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -106,11 +112,13 @@ model Location {
 model Settings {
   id            String   @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
   userId        String   @unique @map("user_id") @db.Uuid
-  indoorMode    Boolean  @default(false) @map("indoor_mode")
-  outdoorMode   Boolean  @default(true) @map("outdoor_mode")
-  voiceSpeed    Float    @default(1.0) @map("voice_speed")
-  voiceVolume   Float    @default(1.0) @map("voice_volume")
-  alertDistance Float    @default(3.0) @map("alert_distance")
+  indoorMode            Boolean  @default(false) @map("indoor_mode")
+  outdoorMode           Boolean  @default(true) @map("outdoor_mode")
+  voiceSpeed            Float    @default(1.0) @map("voice_speed")
+  voiceVolume           Float    @default(1.0) @map("voice_volume")
+  language              String   @default("en")
+  alertDistance         Float    @default(3.0) @map("alert_distance")
+  detectionSensitivity  Float    @default(0.5) @map("detection_sensitivity")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

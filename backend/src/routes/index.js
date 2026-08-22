@@ -1,5 +1,6 @@
 const express = require('express');
 const profileRoutes = require('./profileRoutes');
+const assistantRoutes = require('./assistantRoutes');
 const { getPrisma } = require('../config/prisma');
 const { getSupabaseAdmin } = require('../config/supabase');
 
@@ -28,6 +29,20 @@ router.get('/ready', async (_req, res) => {
   if (!process.env.DATABASE_URL) {
     reasons.push('DATABASE_URL is not set on the server');
   } else {
+    const host = (() => {
+      try {
+        return new URL(process.env.DATABASE_URL).hostname;
+      } catch {
+        return '';
+      }
+    })();
+
+    if (host.startsWith('db.') && host.endsWith('.supabase.co')) {
+      reasons.push(
+        'DATABASE_URL uses db.*.supabase.co (often IPv6-only). On Render use the pooler host aws-0-REGION.pooler.supabase.com',
+      );
+    }
+
     try {
       const prisma = getPrisma();
       if (!prisma) {
@@ -69,5 +84,6 @@ router.get('/ready', async (_req, res) => {
 });
 
 router.use('/profile', profileRoutes);
+router.use('/assistant', assistantRoutes);
 
 module.exports = router;

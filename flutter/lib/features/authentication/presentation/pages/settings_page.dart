@@ -14,6 +14,7 @@ class SettingsPage extends ConsumerStatefulWidget {
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   final _nameController = TextEditingController();
+  final _emergencyNameController = TextEditingController();
   final _emergencyController = TextEditingController();
   double _voiceSpeed = 0.45;
   String _languageCode = 'en';
@@ -29,12 +30,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   void dispose() {
     _nameController.dispose();
+    _emergencyNameController.dispose();
     _emergencyController.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
     _nameController.text = await UserPrefs.getName();
+    _emergencyNameController.text = await UserPrefs.getEmergencyContactName();
     _emergencyController.text = await UserPrefs.getEmergencyContact();
     _voiceSpeed = await UserPrefs.getVoiceSpeed();
     _languageCode = await UserPrefs.getLanguageCode();
@@ -46,6 +49,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _save() async {
     setState(() => _saving = true);
     await UserPrefs.setName(_nameController.text);
+    await UserPrefs.setEmergencyContactName(_emergencyNameController.text);
     await UserPrefs.setEmergencyContact(_emergencyController.text);
     await UserPrefs.setVoiceSpeed(_voiceSpeed);
     await UserPrefs.setLanguageCode(_languageCode);
@@ -109,6 +113,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     controller: _nameController,
                     decoration: const InputDecoration(
                       labelText: 'Your name',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _emergencyNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'Emergency contact name',
+                      hintText: 'e.g. Harry',
                       border: OutlineInputBorder(),
                     ),
                   ),
