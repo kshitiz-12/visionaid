@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -34,22 +35,35 @@ class CompanionClient {
     List<Map<String, String>> history = const [],
   }) async {
     final uri = Uri.parse('$_baseUrl/api/assistant/chat');
-    final response = await _http
-        .post(
-          uri,
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: jsonEncode({
-            'message': message,
-            'language': language,
-            'userName': userName,
-            'sceneSummary': sceneSummary,
-            'history': history,
-          }),
-        )
-        .timeout(const Duration(seconds: 45));
+    late http.Response response;
+    try {
+      response = await _http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode({
+              'message': message,
+              'language': language,
+              'userName': userName,
+              'sceneSummary': sceneSummary,
+              'history': history,
+            }),
+          )
+          .timeout(const Duration(seconds: 90));
+    } on TimeoutException {
+      throw const AppException(
+        'The server is waking up. Wait a few seconds and ask again.',
+        code: 'NETWORK_ERROR',
+      );
+    } catch (_) {
+      throw const AppException(
+        'Network request failed. Check your connection.',
+        code: 'NETWORK_ERROR',
+      );
+    }
 
     Map<String, dynamic>? payload;
     if (response.body.isNotEmpty) {
@@ -85,26 +99,30 @@ class CompanionClient {
     required String language,
   }) async {
     final uri = Uri.parse('$_baseUrl/api/assistant/speak');
-    final response = await _http
-        .post(
-          uri,
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'audio/mpeg',
-          },
-          body: jsonEncode({'text': text, 'language': language}),
-        )
-        .timeout(const Duration(seconds: 45));
+    try {
+      final response = await _http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'audio/mpeg',
+            },
+            body: jsonEncode({'text': text, 'language': language}),
+          )
+          .timeout(const Duration(seconds: 45));
 
-    if (response.statusCode == 503) {
+      if (response.statusCode == 503) {
+        return null;
+      }
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return null;
+      }
+      if (response.bodyBytes.isEmpty) {
+        return null;
+      }
+      return response.bodyBytes;
+    } catch (_) {
       return null;
     }
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      return null;
-    }
-    if (response.bodyBytes.isEmpty) {
-      return null;
-    }
-    return response.bodyBytes;
   }
 }

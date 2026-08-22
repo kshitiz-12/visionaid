@@ -66,7 +66,8 @@ function errorHandler(error, _req, res, _next) {
 
   const hideDetails = statusCode >= 500 && isProduction &&
     code !== 'AI_NOT_CONFIGURED' &&
-    code !== 'TTS_NOT_CONFIGURED';
+    code !== 'TTS_NOT_CONFIGURED' &&
+    code !== 'AI_UPSTREAM';
 
   const message = hideDetails
       ? 'Internal server error'

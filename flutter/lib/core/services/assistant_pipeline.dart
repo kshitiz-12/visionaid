@@ -176,8 +176,10 @@ class AssistantPipeline {
         return PipelineResult(
           intent: intent,
           spokenReply: language.code == 'hi'
-              ? 'अभी क्लाउड सहायक तैयार नहीं है। कॉल, देखो, या इमरजेंसी कह सकते हो।'
-              : 'I cannot reach the cloud assistant right now. You can still say call, look ahead, or emergency.',
+              ? 'क्लाउड सहायक अभी जवाब नहीं दे पाया। कुछ सेकंड बाद फिर पूछो। कॉल और इमरजेंसी अभी भी चलेंगे।'
+              : error.code == 'NETWORK_ERROR'
+                  ? error.message
+                  : 'The cloud assistant is on, but Gemini did not answer. Wait a few seconds and try again. Call and emergency still work.',
         );
       }
       return PipelineResult(

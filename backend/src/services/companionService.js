@@ -93,35 +93,69 @@ async function chatOpenAi(userContent) {
   return { text, provider: 'openai' };
 }
 
+function extractGeminiText(body) {
+  const parts = body.candidates?.[0]?.content?.parts || [];
+  return parts
+    .map((part) => (typeof part.text === 'string' ? part.text : ''))
+    .join('')
+    .trim();
+}
+
 async function chatGemini(userContent) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${env.geminiModel}:generateContent?key=${encodeURIComponent(env.geminiApiKey)}`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      contents: [{ role: 'user', parts: [{ text: userContent }] }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 350,
-      },
-    }),
-  });
+  const models = [
+    env.geminiModel,
+    'gemini-2.0-flash',
+    'gemini-2.5-flash',
+    'gemini-flash-latest',
+  ].filter((name, index, all) => name && all.indexOf(name) === index);
 
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail = body.error?.message || `Gemini chat failed (${response.status})`;
-    throw new AppError(detail, { statusCode: 502, code: 'AI_UPSTREAM' });
+  const payload = {
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ role: 'user', parts: [{ text: userContent }] }],
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 512,
+    },
+  };
+
+  let lastDetail = 'Gemini chat failed';
+
+  for (const model of models) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+    let response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': env.geminiApiKey,
+        },
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      lastDetail = error.message || 'Gemini network error';
+      continue;
+    }
+
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      lastDetail = body.error?.message || `Gemini ${model} failed (${response.status})`;
+      console.error(`[companion] gemini ${model}:`, lastDetail);
+      continue;
+    }
+
+    const text = extractGeminiText(body);
+    if (text) {
+      return { text, provider: 'gemini' };
+    }
+    lastDetail = `Gemini ${model} returned no text`;
+    console.error('[companion]', lastDetail, JSON.stringify(body.candidates?.[0]?.finishReason || ''));
   }
 
-  const text = body.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('').trim();
-  if (!text) {
-    throw new AppError('The assistant returned an empty reply', {
-      statusCode: 502,
-      code: 'AI_EMPTY',
-    });
-  }
-  return { text, provider: 'gemini' };
+  throw new AppError(
+    'Gemini could not answer. Check GEMINI_API_KEY and that Generative Language API is enabled.',
+    { statusCode: 502, code: 'AI_UPSTREAM' },
+  );
 }
 
 async function chat(input) {

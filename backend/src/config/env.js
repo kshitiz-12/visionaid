@@ -78,12 +78,12 @@ const env = {
   supabaseServiceRoleKey: raw.SUPABASE_SERVICE_ROLE_KEY || '',
   supabaseJwtSecret: raw.SUPABASE_JWT_SECRET || '',
   corsOrigins,
-  geminiApiKey: raw.GEMINI_API_KEY || '',
-  openaiApiKey: raw.OPENAI_API_KEY || '',
+  geminiApiKey: (raw.GEMINI_API_KEY || '').trim(),
+  openaiApiKey: (raw.OPENAI_API_KEY || '').trim(),
   openaiModel: raw.OPENAI_MODEL || 'gpt-4o-mini',
   openaiTtsModel: raw.OPENAI_TTS_MODEL || 'tts-1-hd',
   openaiTtsVoice: raw.OPENAI_TTS_VOICE || 'nova',
-  geminiModel: raw.GEMINI_MODEL || 'gemini-2.5-flash',
+  geminiModel: (raw.GEMINI_MODEL || 'gemini-2.0-flash').trim(),
 };
 
 module.exports = env;
