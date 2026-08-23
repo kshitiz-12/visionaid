@@ -57,7 +57,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
       _pending = '';
     });
     await ref.read(textToSpeechProvider).speak(prompt);
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await Future<void>.delayed(const Duration(milliseconds: 180));
     await _listen();
   }
 
@@ -72,7 +72,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
 
     try {
       await tts.stop();
-      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await Future<void>.delayed(const Duration(milliseconds: 150));
       setState(() => _status = 'Listening…');
       final spoken = await stt.listen(
         localeId: lang.sttLocale,
@@ -84,8 +84,14 @@ class _SetupPageState extends ConsumerState<SetupPage> {
       if (_awaitingConfirm) {
         if (SpokenConfirm.isYes(spoken)) {
           await _commitPending();
-        } else {
+        } else if (SpokenConfirm.isNo(spoken)) {
           await _askCurrent();
+        } else {
+          final msg = lang.code == 'hi'
+              ? 'हाँ या नहीं बोलें।'
+              : 'Please say yes or no.';
+          setState(() => _status = msg);
+          await tts.speak(msg);
         }
         return;
       }
@@ -106,8 +112,8 @@ class _SetupPageState extends ConsumerState<SetupPage> {
       }
 
       final confirm = lang.code == 'hi'
-          ? 'मैंने सुना: $_pending. सही है तो हाँ बोलें। गलत हो तो नहीं बोलें।'
-          : 'I heard: $_pending. Say yes to confirm, or no to try again.';
+          ? '$_pending. हाँ या नहीं?'
+          : '$_pending. Yes or no?';
       setState(() {
         _awaitingConfirm = true;
         _status = confirm;
@@ -126,7 +132,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
     }
 
     if (mounted && _awaitingConfirm && _pending.isNotEmpty) {
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await Future<void>.delayed(const Duration(milliseconds: 180));
       await _listen();
     }
   }

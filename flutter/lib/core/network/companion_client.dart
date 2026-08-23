@@ -26,6 +26,39 @@ class CompanionClient {
 
   final String _baseUrl;
   final http.Client _http;
+  DateTime? _lastWakeOk;
+  DateTime? _skipCloudTtsUntil;
+
+  /// Hits a cheap health route so Render is less likely to stall the first chat.
+  Future<bool> wake({Duration timeout = const Duration(seconds: 8)}) async {
+    if (_lastWakeOk != null &&
+        DateTime.now().difference(_lastWakeOk!) < const Duration(minutes: 4)) {
+      return true;
+    }
+    try {
+      final response = await _http
+          .get(Uri.parse('$_baseUrl/api/health'))
+          .timeout(timeout);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        _lastWakeOk = DateTime.now();
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  Future<http.Response> _postChat(Map<String, dynamic> body, Duration timeout) {
+    return _http
+        .post(
+          Uri.parse('$_baseUrl/api/assistant/chat'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: jsonEncode(body),
+        )
+        .timeout(timeout);
+  }
 
   Future<CompanionReply> chat({
     required String message,
@@ -33,34 +66,35 @@ class CompanionClient {
     String userName = '',
     String sceneSummary = '',
     List<Map<String, String>> history = const [],
+    String imageBase64 = '',
   }) async {
-    final uri = Uri.parse('$_baseUrl/api/assistant/chat');
+    final body = {
+      'message': message,
+      'language': language,
+      'userName': userName,
+      'sceneSummary': sceneSummary,
+      'history': history.length > 4 ? history.sublist(history.length - 4) : history,
+      if (imageBase64.isNotEmpty) 'imageBase64': imageBase64,
+    };
     late http.Response response;
     try {
-      response = await _http
-          .post(
-            uri,
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-            },
-            body: jsonEncode({
-              'message': message,
-              'language': language,
-              'userName': userName,
-              'sceneSummary': sceneSummary,
-              'history': history,
-            }),
-          )
-          .timeout(const Duration(seconds: 90));
+      response = await _postChat(
+        body,
+        imageBase64.isNotEmpty
+            ? const Duration(seconds: 18)
+            : const Duration(seconds: 10),
+      );
     } on TimeoutException {
       throw const AppException(
-        'The server is waking up. Wait a few seconds and ask again.',
+        'The assistant is slow right now. Call, emergency, and look ahead still work.',
         code: 'NETWORK_ERROR',
       );
-    } catch (_) {
+    } catch (error) {
+      if (error is AppException) {
+        rethrow;
+      }
       throw const AppException(
-        'Network request failed. Check your connection.',
+        'No internet to the assistant. Call, emergency, and look ahead still work.',
         code: 'NETWORK_ERROR',
       );
     }
@@ -98,6 +132,10 @@ class CompanionClient {
     required String text,
     required String language,
   }) async {
+    if (_skipCloudTtsUntil != null &&
+        DateTime.now().isBefore(_skipCloudTtsUntil!)) {
+      return null;
+    }
     final uri = Uri.parse('$_baseUrl/api/assistant/speak');
     try {
       final response = await _http
@@ -109,9 +147,10 @@ class CompanionClient {
             },
             body: jsonEncode({'text': text, 'language': language}),
           )
-          .timeout(const Duration(seconds: 45));
+          .timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 503) {
+        _skipCloudTtsUntil = DateTime.now().add(const Duration(minutes: 5));
         return null;
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -122,6 +161,7 @@ class CompanionClient {
       }
       return response.bodyBytes;
     } catch (_) {
+      _skipCloudTtsUntil = DateTime.now().add(const Duration(minutes: 3));
       return null;
     }
   }

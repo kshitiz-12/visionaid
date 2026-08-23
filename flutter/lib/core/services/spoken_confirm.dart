@@ -1,26 +1,114 @@
 class SpokenConfirm {
   SpokenConfirm._();
 
+  static String _fold(String spoken) {
+    return spoken
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s\u0900-\u097F]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  static bool _hasToken(String text, String token) {
+    if (token.isEmpty) {
+      return false;
+    }
+    if (RegExp(r'^[a-z0-9]+$').hasMatch(token)) {
+      return RegExp('\\b${RegExp.escape(token)}\\b').hasMatch(text);
+    }
+    return text.contains(token);
+  }
+
   static bool isYes(String spoken) {
-    final t = spoken.trim().toLowerCase();
-    return RegExp(
-      r'\b(yes|yeah|yep|correct|confirm|ok|okay|right|sure|haan|han|ha|sahi|theek|जी|हाँ|हां|सही|ठीक)\b',
-    ).hasMatch(t);
+    final t = _fold(spoken);
+    if (t.isEmpty) {
+      return false;
+    }
+    const latin = [
+      'yes',
+      'yeah',
+      'yep',
+      'yup',
+      'yea',
+      'yah',
+      'yesh',
+      'correct',
+      'confirm',
+      'okay',
+      'ok',
+      'right',
+      'sure',
+      'affirmative',
+      'haan',
+      'haanji',
+      'hanji',
+      'han',
+      'haa',
+      'sahi',
+      'theek',
+      'thik',
+      'bilkul',
+    ];
+    if (latin.any((w) => _hasToken(t, w))) {
+      return true;
+    }
+    // Whole-word "ha" only — not inside "that" / "what".
+    if (RegExp(r'(^|\s)ha(\s|$)').hasMatch(t)) {
+      return true;
+    }
+    const native = [
+      'हाँ',
+      'हां',
+      'हा',
+      'जी',
+      'सही',
+      'ठीक',
+      'येस',
+      'यस',
+      'येश',
+      'हांजी',
+      'हाँजी',
+    ];
+    return native.any(t.contains);
   }
 
   static bool isNo(String spoken) {
-    final t = spoken.trim().toLowerCase();
-    return RegExp(
-      r'\b(no|nope|wrong|again|nahi|na|cancel|नहीं|नही|गलत)\b',
-    ).hasMatch(t);
+    final t = _fold(spoken);
+    if (t.isEmpty) {
+      return false;
+    }
+    const latin = [
+      'no',
+      'nope',
+      'nah',
+      'wrong',
+      'again',
+      'nahi',
+      'nahee',
+      'naa',
+      'cancel',
+      'negative',
+    ];
+    if (latin.any((w) => _hasToken(t, w))) {
+      return true;
+    }
+    if (RegExp(r'(^|\s)na(\s|$)').hasMatch(t)) {
+      return true;
+    }
+    const native = ['नहीं', 'नही', 'ना', 'मत', 'गलत', 'नो'];
+    return native.any(t.contains);
   }
 
   static String? parseLanguage(String spoken) {
     final t = spoken.trim().toLowerCase();
-    if (RegExp(r'\b(hindi|हिंदी|हिन्दी|हिन्दि)\b').hasMatch(t)) {
+    if (RegExp(r'\b(hindi|हिंदी|हिन्दी|हिन्दि)\b').hasMatch(t) ||
+        t.contains('हिंदी') ||
+        t.contains('हिन्दी')) {
       return 'hi';
     }
-    if (RegExp(r'\b(english|angrezi|angrezi|अंग्रेजी)\b').hasMatch(t)) {
+    if (RegExp(r'\b(english|angrezi|अंग्रेजी)\b').hasMatch(t) ||
+        t.contains('अंग्रेजी')) {
       return 'en';
     }
     return null;

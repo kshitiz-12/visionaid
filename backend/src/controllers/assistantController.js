@@ -12,7 +12,8 @@ const chatSchema = z.object({
   language: z.string().trim().max(16).optional().default('en'),
   userName: z.string().trim().max(80).optional().default(''),
   sceneSummary: z.string().trim().max(2000).optional().default(''),
-  history: z.array(historyItem).max(12).optional().default([]),
+  imageBase64: z.string().max(6_000_000).optional().default(''),
+  history: z.array(historyItem).max(6).optional().default([]),
 });
 
 const speakSchema = z.object({

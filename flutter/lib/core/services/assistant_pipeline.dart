@@ -1,8 +1,11 @@
+import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart';
+
 import '../../features/context_engine/domain/services/context_engine.dart';
 import '../../features/emergency/data/emergency_service.dart';
 import '../../features/intent/domain/entities/user_intent.dart';
 import '../../features/intent/domain/services/intent_engine.dart';
 import '../../features/ocr/domain/services/ocr_engine.dart';
+import '../../features/vision/data/services/scene_labeler.dart';
 import '../../features/vision/domain/services/object_detector_service.dart';
 import '../exceptions/app_exception.dart';
 import '../network/companion_client.dart';
@@ -22,6 +25,7 @@ class AssistantPipeline {
     required this.emergency,
     required this.companion,
     required this.memory,
+    required this.labeler,
   });
 
   final IntentEngine intentEngine;
@@ -32,6 +36,7 @@ class AssistantPipeline {
   final EmergencyService emergency;
   final CompanionClient companion;
   final ConversationMemory memory;
+  final SceneLabeler labeler;
 
   Future<PipelineResult> handleSpoken(String spokenText) async {
     final intent = await intentEngine.classify(spokenText);
@@ -114,46 +119,47 @@ class AssistantPipeline {
     }
   }
 
-  Future<String> _sceneFacts(UserIntent intent) async {
+  Future<({String facts, String imageBase64})> _captureScene(UserIntent intent) async {
     try {
-      final path = await camera.captureStill();
-      final detections = await detector.detect(path);
-      final maps = detections.map((d) => d.toMap()).toList();
+      final shot = await camera.captureJpeg();
+      final detections = await detector.detect(shot.path);
+      List<RawDetection> labels = const [];
+      try {
+        labels = await labeler.label(InputImage.fromFilePath(shot.path));
+      } catch (_) {}
+      final merged = SceneLabeler.merge(detections, labels);
+      final maps = merged.map((d) => d.toMap()).toList();
       final decision = contextEngine.evaluate(
         detections: maps,
         intentTarget: intent.target,
       );
-      final labels = maps
+      final names = maps
           .map((m) => m['label'] as String? ?? '')
           .where((l) => l.isNotEmpty)
-          .take(8)
+          .take(6)
           .join(', ');
       final facts =
-          '${decision.spokenMessage}. Detected: ${labels.isEmpty ? 'none' : labels}.';
+          '${decision.spokenMessage}. Detected: ${names.isEmpty ? 'none' : names}.';
       memory.rememberScene(facts);
-      return facts;
+      return (facts: facts, imageBase64: shot.imageBase64);
     } catch (_) {
-      return memory.lastScene;
+      return (facts: memory.lastScene, imageBase64: '');
     }
   }
 
   bool _needsFreshScene(UserIntent intent) {
-    if (intent.type == IntentType.sceneDescribe ||
+    return intent.type == IntentType.sceneDescribe ||
         intent.type == IntentType.findObject ||
-        intent.type == IntentType.navigation) {
-      return true;
-    }
-    final t = intent.rawText.toLowerCase();
-    return RegExp(
-          r'\b(in front|ahead|around me|do you see|look|purse|handbag|bag|door|stairs|left|right|what is that)\b',
-        ).hasMatch(t) ||
-        RegExp(r'सामने|आसपास|पर्स|बैग|कहाँ|दरवाजा').hasMatch(t);
+        intent.type == IntentType.navigation;
   }
 
   Future<PipelineResult> _chat(UserIntent intent) async {
-    var scene = memory.lastScene;
+    var scene = '';
+    var imageBase64 = '';
     if (_needsFreshScene(intent)) {
-      scene = await _sceneFacts(intent);
+      final snap = await _captureScene(intent);
+      scene = snap.facts;
+      imageBase64 = snap.imageBase64;
     }
 
     final language = AppLanguage.fromCode(await UserPrefs.getLanguageCode());
@@ -166,6 +172,7 @@ class AssistantPipeline {
         userName: name,
         sceneSummary: scene,
         history: memory.history,
+        imageBase64: imageBase64,
       );
       memory.addTurn(user: intent.rawText, assistant: reply.text);
       return PipelineResult(intent: intent, spokenReply: reply.text);
@@ -176,10 +183,8 @@ class AssistantPipeline {
         return PipelineResult(
           intent: intent,
           spokenReply: language.code == 'hi'
-              ? 'क्लाउड सहायक अभी जवाब नहीं दे पाया। कुछ सेकंड बाद फिर पूछो। कॉल और इमरजेंसी अभी भी चलेंगे।'
-              : error.code == 'NETWORK_ERROR'
-                  ? error.message
-                  : 'The cloud assistant is on, but Gemini did not answer. Wait a few seconds and try again. Call and emergency still work.',
+              ? 'इंटरनेट सहायक अभी नहीं जवाब दे पाया। कॉल, इमरजेंसी और गाइड अभी भी चलेंगे। ${_offlineVisionHint(scene, language.code)}'
+              : '${_offlineVisionHint(scene, language.code)} Call, emergency, and look ahead still work.',
         );
       }
       return PipelineResult(
@@ -197,40 +202,37 @@ class AssistantPipeline {
   }
 
   Future<PipelineResult> _runVisionThenChat(UserIntent intent) async {
-    await _sceneFacts(intent);
     return _chat(intent);
   }
 
   Future<PipelineResult> _runOcr(UserIntent intent) async {
     try {
-      final path = await camera.captureStill();
-      final text = await ocr.recognizeText(path);
-      if (text.isEmpty) {
-        return PipelineResult(
-          intent: intent,
-          spokenReply:
-              'I could not read any text. Hold the phone steady and point at the print.',
-        );
-      }
-
+      final shot = await camera.captureJpeg();
+      final text = await ocr.recognizeText(shot.path);
       final clipped = text.length > 400 ? '${text.substring(0, 400)}…' : text;
-      memory.rememberScene('Printed text: $clipped');
+      if (clipped.isNotEmpty) {
+        memory.rememberScene('Printed text: $clipped');
+      }
       final language = AppLanguage.fromCode(await UserPrefs.getLanguageCode());
       try {
         final reply = await companion.chat(
-          message:
-              'Please read this printed text aloud in a natural way, then say if anything important stands out. Text: $clipped',
+          message: clipped.isEmpty
+              ? 'Look at this photo. Read any text or money you can see, in a natural spoken way.'
+              : 'Read any print in the photo naturally, including money amounts if a note is visible. OCR hint: $clipped',
           language: language.code,
           userName: await UserPrefs.getName(),
           sceneSummary: memory.lastScene,
           history: memory.history,
+          imageBase64: shot.imageBase64,
         );
         memory.addTurn(user: intent.rawText, assistant: reply.text);
         return PipelineResult(intent: intent, spokenReply: reply.text);
       } catch (_) {
         return PipelineResult(
           intent: intent,
-          spokenReply: 'It says: $clipped',
+          spokenReply: clipped.isEmpty
+              ? 'I could not read the print. Hold the phone steady.'
+              : 'It says: $clipped',
         );
       }
     } catch (error) {
@@ -240,6 +242,19 @@ class AssistantPipeline {
         isAlert: true,
       );
     }
+  }
+
+  String _offlineVisionHint(String scene, String lang) {
+    final facts = scene.trim();
+    final has = facts.isNotEmpty &&
+        !facts.toLowerCase().contains('detected: none') &&
+        facts.toLowerCase() != 'none';
+    if (lang == 'hi') {
+      return has ? 'कैमरा दिखाता है: $facts' : 'कैमरा दृश्य अभी खाली है।';
+    }
+    return has
+        ? 'From the camera: $facts'
+        : 'I could not reach the internet assistant just now.';
   }
 
   String _friendlyError(Object error) {

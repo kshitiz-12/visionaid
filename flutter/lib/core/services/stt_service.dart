@@ -1,9 +1,10 @@
+import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
 abstract class SpeechToTextService {
   Future<bool> initialize();
   Future<String> listen({
-    Duration timeout = const Duration(seconds: 8),
+    Duration timeout = const Duration(seconds: 6),
     String? localeId,
   });
   Future<void> stop();
@@ -15,62 +16,130 @@ class AndroidSpeechToTextService implements SpeechToTextService {
 
   final SpeechToText _speech;
   bool _initialized = false;
+  String _lastError = '';
+  String? _cachedLocale;
 
   @override
   Future<bool> initialize() async {
-    if (_initialized) {
-      return _speech.isAvailable;
+    final mic = await Permission.microphone.request();
+    if (!mic.isGranted) {
+      throw StateError(
+        'Microphone permission is required. Enable it in settings, then try again.',
+      );
     }
+
+    if (_initialized && _speech.isAvailable) {
+      return true;
+    }
+
     _initialized = await _speech.initialize(
-      onError: (error) => debugPrintStt('STT error: ${error.errorMsg}'),
+      onError: (error) {
+        _lastError = error.errorMsg;
+        debugPrintStt('STT error: ${error.errorMsg}');
+      },
       onStatus: (status) => debugPrintStt('STT status: $status'),
     );
-    return _initialized;
+    return _initialized && _speech.isAvailable;
   }
 
   @override
   Future<String> listen({
-    Duration timeout = const Duration(seconds: 8),
+    Duration timeout = const Duration(seconds: 6),
     String? localeId,
   }) async {
     final ready = await initialize();
     if (!ready) {
-      throw StateError('Speech recognition is not available on this device.');
+      _initialized = false;
+      throw StateError(
+        'Speech recognition is not available. Install Google Speech and check the microphone.',
+      );
     }
 
     if (_speech.isListening) {
       await _speech.stop();
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await Future<void>.delayed(const Duration(milliseconds: 80));
     }
 
+    final locale = _cachedLocale ?? localeId;
+    final heard = await _listenOnce(timeout: timeout, localeId: locale);
+    if (heard.isNotEmpty) {
+      _cachedLocale = locale;
+      return heard;
+    }
+
+    final hint = _lastError.toLowerCase();
+    if (hint.contains('permission')) {
+      throw StateError(
+        'I cannot use the microphone. Allow microphone permission and try again.',
+      );
+    }
+    if (hint.contains('network') || hint.contains('client')) {
+      throw StateError(
+        'Speech needs a brief internet connection on this phone. Check data or Wi‑Fi.',
+      );
+    }
+    throw StateError('I could not hear you. Tap the mic and speak clearly.');
+  }
+
+  Future<String> _listenOnce({
+    required Duration timeout,
+    required String? localeId,
+  }) async {
+    _lastError = '';
     var transcript = '';
-    await _speech.listen(
-      onResult: (result) {
-        transcript = result.recognizedWords;
-      },
-      listenOptions: SpeechListenOptions(
-        listenMode: ListenMode.confirmation,
-        partialResults: true,
-        cancelOnError: true,
-        listenFor: timeout,
-        pauseFor: const Duration(seconds: 3),
-        localeId: localeId,
-      ),
-    );
+    var lastHeardAt = DateTime.now();
+    var gotFinal = false;
 
-    final deadline = DateTime.now().add(timeout + const Duration(seconds: 2));
-    while (_speech.isListening && DateTime.now().isBefore(deadline)) {
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+    try {
+      await _speech.listen(
+        onResult: (result) {
+          final words = result.recognizedWords.trim();
+          if (words.isEmpty) {
+            return;
+          }
+          transcript = words;
+          lastHeardAt = DateTime.now();
+          if (result.finalResult) {
+            gotFinal = true;
+          }
+        },
+        listenOptions: SpeechListenOptions(
+          listenMode: ListenMode.dictation,
+          partialResults: true,
+          cancelOnError: false,
+          listenFor: timeout,
+          pauseFor: const Duration(milliseconds: 900),
+          localeId: localeId,
+        ),
+      );
+    } catch (_) {
+      if (_speech.isListening) {
+        await _speech.cancel();
+      }
+      throw StateError('I could not start listening. Try again.');
     }
+
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      if (gotFinal && transcript.isNotEmpty) {
+        break;
+      }
+      if (transcript.isNotEmpty &&
+          DateTime.now().difference(lastHeardAt) >=
+              const Duration(milliseconds: 450)) {
+        break;
+      }
+      if (!_speech.isListening && transcript.isNotEmpty) {
+        break;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+    }
+
     if (_speech.isListening) {
       await _speech.stop();
     }
 
-    final text = transcript.trim();
-    if (text.isEmpty) {
-      throw StateError('I did not catch that. Please try again.');
-    }
-    return text;
+    return transcript.trim();
   }
 
   @override
@@ -88,7 +157,7 @@ class MockSpeechToTextService implements SpeechToTextService {
 
   @override
   Future<String> listen({
-    Duration timeout = const Duration(seconds: 8),
+    Duration timeout = const Duration(seconds: 6),
     String? localeId,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 50));

@@ -1,0 +1,65 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:visionaid/features/guide_alerts/data/response_generator.dart';
+import 'package:visionaid/features/guide_alerts/data/spatial_relations.dart';
+import 'package:visionaid/features/guide_alerts/domain/guide_models.dart';
+import 'package:visionaid/features/vision/data/services/money_note_reader.dart';
+
+void main() {
+  const speech = ResponseGenerator();
+
+  test('door left about a meter, then reached', () {
+    expect(
+      speech.distancePhrase(0.25),
+      'about a meter away',
+    );
+    expect(
+      speech.targetFound(
+        label: 'door',
+        direction: GuideDirection.left,
+        proximity: 0.25,
+      ),
+      'The door is on your left, about a meter away.',
+    );
+    expect(
+      speech.targetFound(
+        label: 'door',
+        direction: GuideDirection.center,
+        proximity: 0.5,
+        reached: true,
+      ),
+      'Stop. You have reached the door.',
+    );
+  });
+
+  test('headphones on the table', () {
+    final phones = GuideObjectSnapshot(
+      label: 'headphones',
+      confidence: 0.8,
+      boundingBox: (left: 0.4, top: 0.2, right: 0.55, bottom: 0.35),
+      direction: GuideDirection.center,
+    );
+    final table = GuideObjectSnapshot(
+      label: 'table',
+      confidence: 0.8,
+      boundingBox: (left: 0.2, top: 0.32, right: 0.8, bottom: 0.9),
+      direction: GuideDirection.center,
+    );
+    expect(
+      SpatialRelations.phrase(phones, [phones, table]),
+      'on the table',
+    );
+  });
+
+  test('reads rupee note amount from print', () {
+    expect(
+      MoneyNoteReader.speakFromOcr('Reserve Bank of India 500'),
+      contains('500 rupees'),
+    );
+    expect(MoneyNoteReader.looksLikeCash(['cash']), isTrue);
+  });
+
+  test('metres stay approximate, never millimetre-precise', () {
+    expect(speech.metresOrBoxPhrase(1.037, 0.2), 'about one metre ahead');
+    expect(speech.metresOrBoxPhrase(null, 0.25), 'about a meter away');
+  });
+}

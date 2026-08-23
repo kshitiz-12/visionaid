@@ -59,5 +59,21 @@ void main() {
       isTrue,
     );
   });
+
+  test('open questions stay conversation, not camera', () async {
+    final weather = await engine.classify('What is the weather like today');
+    expect(weather.type, IntentType.conversation);
+
+    final recipe = await engine.classify('How do I make tea');
+    expect(recipe.type, IntentType.conversation);
+
+    final feeling = await engine.classify('I feel lonely tonight');
+    expect(feeling.type, IntentType.conversation);
+  });
+
+  test('stop guiding is cancel', () async {
+    final intent = await engine.classify('Stop guiding');
+    expect(intent.type, IntentType.cancel);
+  });
 }
 

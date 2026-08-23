@@ -1,13 +1,9 @@
 # On-device models
 
-VisionAid ships with **ML Kit Object Detection** as the default on-device detector
-(privacy-first, no cloud upload of frames).
+Bundled: **EfficientDet Lite0 (COCO)** as `efficientdet_lite0.tflite`.
 
-To swap in **YOLOv8 Nano TFLite**:
+This uses the same 80 everyday classes as a typical **YOLOv8n** (person, chair, car, bottle, …). **Wall is not one of those classes.** A large unlabeled block in the walking path is spoken as wall or obstacle.
 
-1. Export `yolov8n.tflite` (Ultralytics).
-2. Place it here as `yolov8n.tflite`.
-3. Implement `YoloTfliteDetector` against `ObjectDetectorService`.
-4. Point `objectDetectorProvider` at the YOLO implementation.
+Swapping to YOLO would mainly change speed and how many of those 80 classes get boxes. It would not magically see blank walls. Depth / ARCore or a custom wall model would.
 
-Until then, the production path is ML Kit → Context Engine → TTS.
+Headphones come from image labeling, not COCO.

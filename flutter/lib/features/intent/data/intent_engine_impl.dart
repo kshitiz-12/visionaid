@@ -9,7 +9,9 @@ class IntentEngineImpl implements IntentEngine {
       RegExp(r'\b(बाहर\s*निकलो|ऐप\s*बंद)\b'),
     ],
     IntentType.cancel: [
-      RegExp(r'\b(cancel|never\s*mind|quiet|go\s+home|stop\s+listening|stop\s+talking)\b'),
+      RegExp(
+        r'\b(cancel|never\s*mind|quiet|go\s+home|stop\s+listening|stop\s+talking|stop\s+guiding|stop\s+walking|stop\s+looking)\b',
+      ),
     ],
     IntentType.emergency: [
       RegExp(r'\b(emergency|danger|sos|i\s*am\s*hurt|call\s*(for\s*)?help)\b'),
@@ -23,26 +25,30 @@ class IntentEngineImpl implements IntentEngine {
       RegExp(r'\b(कॉल|मैसेज|फोन|व्हाट्सऐप|व्हाट्सएप)\b'),
     ],
     IntentType.readText: [
-      RegExp(r'\b(read|ocr|what\s+does\s+it\s+say|read\s+(the\s+)?(text|sign|label|menu))\b'),
-      RegExp(r'\b(पढ़ो|पढ़ना|लिख[ाई]|टेक्स्ट)\b'),
+      RegExp(
+        r'\b(read\s+(this|that|the|it)|ocr|what\s+does\s+(this|it|the\s+sign)\s+say|read\s+(the\s+)?(text|sign|label|menu))\b',
+      ),
+      RegExp(r'\b(ये\s*पढ़ो|टेक्स्ट\s*पढ़ो|साइन\s*पढ़ो)\b'),
     ],
     IntentType.navigation: [
-      RegExp(r'\b(navigat|take\s+me|find\s+(the\s+)?route|directions?|guide\s+me|walk\s+with\s+me)\b'),
-      RegExp(r'\b(नेविगेट|ले\s*चलो|साथ\s*चलो)\b'),
+      RegExp(r'\b(guide\s+me|walk\s+with\s+me|live\s+guide|take\s+me\s+(there|ahead))\b'),
+      RegExp(r'\b(गाइड\s*मी|साथ\s*चलो|नेविगेट)\b'),
     ],
     IntentType.findObject: [
-      RegExp(r'\b(where\s+is|find|locate|look\s+for|search\s+for)\b'),
-      RegExp(r'\b(कहाँ\s*है|ढूँढो|खोजो)\b'),
+      RegExp(
+        r'\b(where\s+is(\s+my|\s+the)?|find\s+my|locate\s+my|look\s+for\s+my)\b',
+      ),
+      RegExp(r'\b(मेरा\s+.+\s+कहाँ|कहाँ\s*है\s*(मेरा|मेरी)|ढूँढो|खोजो)\b'),
     ],
     IntentType.sceneDescribe: [
       RegExp(
-        r'\b(what(\s+is|\s+do\s+you\s+see)|describe|in\s+front|around\s+me|look\s+around|scene)\b',
+        r"\b(what('?s|\s+is)\s+(that|this|in\s+front|around\s+me)|what\s+do\s+you\s+see|describe\s+(the\s+)?(scene|room|view)|look\s+around|in\s+front\s+of\s+me|around\s+me)\b",
       ),
-      RegExp(r'\b(क्या\s*(है|दिख|देख)|सामने|आसपास)\b'),
+      RegExp(r'\b(क्या\s*दिख|ये\s*क्या\s*है|सामने\s*क्या|आसपास\s*क्या|दृश्य)\b'),
     ],
     IntentType.help: [
-      RegExp(r'\b(help|what\s+can\s+you|commands?|how\s+do\s+i)\b'),
-      RegExp(r'\b(मदद|कैसे|क्या\s*कर\s*सकते)\b'),
+      RegExp(r'\b(what\s+can\s+you(\s+do)?|commands?|how\s+do\s+i\s+use)\b'),
+      RegExp(r'\b(क्या\s*कर\s*सकते|कमांड)\b'),
     ],
   };
 
@@ -53,6 +59,8 @@ class IntentEngineImpl implements IntentEngine {
     'chair': RegExp(r'\bchairs?\b|\bकुर्सी\b'),
     'table': RegExp(r'\btables?\b|\bमेज\b'),
     'phone': RegExp(r'\bphones?\b|\bफोन\b'),
+    'laptop': RegExp(r'\b(laptops?|computer|notebook)\b|\bलैपटॉप\b'),
+    'headphones': RegExp(r'\b(headphones?|earphones?|earbuds?|headset)\b|\bहेडफोन\b'),
     'purse': RegExp(r'\b(purse|handbag|wallet|bag)\b|\bपर्स\b|\bबैग\b'),
     'vehicle': RegExp(r'\b(car|bus|truck|vehicle|bike)\b|\bगाड़ी\b|\bकार\b'),
     'stairs': RegExp(r'\bstairs?\b|\bसीढ़ि'),

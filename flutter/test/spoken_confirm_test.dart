@@ -9,7 +9,15 @@ void main() {
 
   test('confirms yes and no', () {
     expect(SpokenConfirm.isYes('yes'), isTrue);
+    expect(SpokenConfirm.isYes('haa'), isTrue);
+    expect(SpokenConfirm.isYes('haan'), isTrue);
+    expect(SpokenConfirm.isYes('हाँ'), isTrue);
+    expect(SpokenConfirm.isYes('येस'), isTrue);
     expect(SpokenConfirm.isNo('no try again'), isTrue);
+    expect(SpokenConfirm.isNo('naa'), isTrue);
+    expect(SpokenConfirm.isNo('नहीं'), isTrue);
+    expect(SpokenConfirm.isYes('that'), isFalse);
+    expect(SpokenConfirm.isNo('name'), isFalse);
   });
 
   test('extracts phone digits from speech', () {

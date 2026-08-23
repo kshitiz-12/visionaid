@@ -20,6 +20,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   String _languageCode = 'en';
   bool _loading = true;
   bool _saving = false;
+  bool _research = false;
 
   @override
   void initState() {
@@ -41,6 +42,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _emergencyController.text = await UserPrefs.getEmergencyContact();
     _voiceSpeed = await UserPrefs.getVoiceSpeed();
     _languageCode = await UserPrefs.getLanguageCode();
+    _research = await UserPrefs.getResearchMode();
     if (mounted) {
       setState(() => _loading = false);
     }
@@ -53,6 +55,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     await UserPrefs.setEmergencyContact(_emergencyController.text);
     await UserPrefs.setVoiceSpeed(_voiceSpeed);
     await UserPrefs.setLanguageCode(_languageCode);
+    await UserPrefs.setResearchMode(_research);
     final lang = AppLanguage.fromCode(_languageCode);
     await ref.read(textToSpeechProvider).setLocale(lang.ttsLocale);
     await ref.read(textToSpeechProvider).speak(
@@ -141,6 +144,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     min: 0.2,
                     max: 0.8,
                     onChanged: (value) => setState(() => _voiceSpeed = value),
+                  ),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Research overlay'),
+                    subtitle: const Text(
+                      'Shows scores and latency. Not for everyday use.',
+                    ),
+                    value: _research,
+                    onChanged: (value) => setState(() => _research = value),
                   ),
                   const SizedBox(height: 24),
                   FilledButton(

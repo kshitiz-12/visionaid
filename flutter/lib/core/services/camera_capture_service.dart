@@ -1,9 +1,24 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:camera/camera.dart';
+import 'package:image/image.dart' as img;
 import 'package:permission_handler/permission_handler.dart';
 
-/// Captures a single still frame from the back camera for on-device analysis.
 class CameraCaptureService {
   Future<String> captureStill() async {
+    final shot = await captureJpeg();
+    return shot.path;
+  }
+
+  /// JPEG on disk plus a small base64 frame for cloud vision.
+  Future<({String path, String imageBase64})> captureJpeg() async {
+    final path = await _takePicture();
+    final encoded = await _compactJpeg(path);
+    return (path: path, imageBase64: encoded);
+  }
+
+  Future<String> _takePicture() async {
     final status = await Permission.camera.request();
     if (!status.isGranted) {
       throw StateError('Camera permission is required. Enable it in settings.');
@@ -28,8 +43,7 @@ class CameraCaptureService {
 
     try {
       await controller.initialize();
-      // Let auto-exposure settle so the first frame is usable.
-      await Future<void>.delayed(const Duration(milliseconds: 800));
+      await Future<void>.delayed(const Duration(milliseconds: 280));
       final file = await controller.takePicture();
       return file.path;
     } on CameraException catch (error) {
@@ -39,5 +53,17 @@ class CameraCaptureService {
     } finally {
       await controller.dispose();
     }
+  }
+
+  Future<String> _compactJpeg(String path) async {
+    final bytes = await File(path).readAsBytes();
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) {
+      return base64Encode(bytes);
+    }
+    final width = decoded.width > 640 ? 640 : decoded.width;
+    final resized = img.copyResize(decoded, width: width);
+    final jpeg = img.encodeJpg(resized, quality: 48);
+    return base64Encode(jpeg);
   }
 }

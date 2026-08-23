@@ -64,12 +64,24 @@ class UserPrefs {
 
   static Future<double> getVoiceSpeed() async {
     final prefs = await _prefs;
-    return prefs.getDouble(_voiceSpeedKey) ?? 0.45;
+    return prefs.getDouble(_voiceSpeedKey) ?? 0.52;
   }
 
   static Future<void> setVoiceSpeed(double speed) async {
     final prefs = await _prefs;
     await prefs.setDouble(_voiceSpeedKey, speed);
+  }
+
+  static const _researchKey = 'research_debug_overlay';
+
+  static Future<bool> getResearchMode() async {
+    final prefs = await _prefs;
+    return prefs.getBool(_researchKey) ?? false;
+  }
+
+  static Future<void> setResearchMode(bool value) async {
+    final prefs = await _prefs;
+    await prefs.setBool(_researchKey, value);
   }
 }
 

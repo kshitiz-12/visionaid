@@ -1,23 +1,14 @@
 const env = require('../config/env');
 const { AppError } = require('../utils/appError');
 
-const SYSTEM_PROMPT = `You are VisionAid, a calm companion walking beside a person who is blind or has very low vision. They may live alone.
+const SYSTEM_PROMPT = `You are VisionAid, a trusted friend beside a person who is blind or has low vision.
 
-How you talk:
-- Sound like a thoughtful friend, not a robot, IVR, or bullet-list assistant.
-- Speak in the user's language (English, Hindi, or whatever they used). Match their register.
-- Keep answers short enough to hear: usually 1–4 spoken sentences. Ask one follow-up only when it helps.
-- Never say you are ChatGPT, Gemini, or a language model. You are VisionAid.
+Two jobs:
+1) Conversation: they may ask about ANYTHING — feelings, plans, knowledge, maths, jokes. Answer that. Do not drag every reply to the camera.
+2) Seeing: if a PHOTO is attached, YOU are the eyes. Name real things in the photo in natural speech. Say where they are (left, right, ahead, on the table, in the hand). Guess walking distance only as "very close / about a step / a couple of steps / further". If they are looking for something, say whether you see it. If you see cash or a note, say the amount if the print is readable. Never invent objects that are not in the photo.
 
-What you can do:
-- Answer questions, explain things, and help plan (errands, cooking steps, what to say in a call, daily routines).
-- Use CAMERA SCENE FACTS when present. Those facts come from on-device vision. Do not invent objects that are not listed. If the scene is empty or stale, say you are not sure what is in front of them right now.
-- For mobility: be direct. Prefer “stop”, “wait”, “you can walk”, “on your right / left / ahead”, “very close”.
-- You cannot place phone calls, send SMS, or open WhatsApp yourself. If they want that, tell them to say call, text, or WhatsApp plus the name.
-- If they are in danger, tell them to say Emergency.
-
-Safety:
-- No medical diagnosis. No illegal advice. Do not claim you can see the world beyond the scene facts.`;
+Speak their language. 2–4 short spoken sentences. Warm, not robotic. Never say you are Gemini or ChatGPT.
+You cannot place calls. Danger: tell them to say Emergency.`;
 
 function hasAnyKey() {
   return Boolean(env.openaiApiKey || env.geminiApiKey);
@@ -34,6 +25,15 @@ function languageName(code) {
   return code || 'the user\'s language';
 }
 
+function stripDataUrl(raw) {
+  const s = String(raw || '').trim();
+  const comma = s.indexOf(',');
+  if (s.startsWith('data:') && comma !== -1) {
+    return s.slice(comma + 1);
+  }
+  return s.replace(/\s/g, '');
+}
+
 function buildUserPayload({ message, language, userName, sceneSummary, history }) {
   const lines = [];
   lines.push(`User language: ${languageName(language)}. Reply only in that language.`);
@@ -41,13 +41,11 @@ function buildUserPayload({ message, language, userName, sceneSummary, history }
     lines.push(`Their name: ${userName}.`);
   }
   if (sceneSummary) {
-    lines.push(`CAMERA SCENE FACTS (on-device, may be incomplete):\n${sceneSummary}`);
-  } else {
-    lines.push('CAMERA SCENE FACTS: none for this turn.');
+    lines.push(`On-device guesses (may be wrong; trust the photo more):\n${sceneSummary}`);
   }
   if (Array.isArray(history) && history.length > 0) {
     lines.push('Recent conversation:');
-    for (const turn of history.slice(-12)) {
+    for (const turn of history.slice(-4)) {
       const role = turn.role === 'assistant' ? 'VisionAid' : 'User';
       const text = String(turn.content || '').slice(0, 500);
       if (text) {
@@ -59,7 +57,17 @@ function buildUserPayload({ message, language, userName, sceneSummary, history }
   return lines.join('\n\n');
 }
 
-async function chatOpenAi(userContent) {
+async function chatOpenAi(userContent, imageBase64) {
+  const userParts = imageBase64
+    ? [
+        { type: 'text', text: userContent },
+        {
+          type: 'image_url',
+          image_url: { url: `data:image/jpeg;base64,${imageBase64}` },
+        },
+      ]
+    : userContent;
+
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -69,10 +77,10 @@ async function chatOpenAi(userContent) {
     body: JSON.stringify({
       model: env.openaiModel,
       temperature: 0.7,
-      max_tokens: 350,
+      max_tokens: 220,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userContent },
+        { role: 'user', content: userParts },
       ],
     }),
   });
@@ -101,61 +109,48 @@ function extractGeminiText(body) {
     .trim();
 }
 
-async function chatGemini(userContent) {
-  const models = [
-    env.geminiModel,
-    'gemini-2.0-flash',
-    'gemini-2.5-flash',
-    'gemini-flash-latest',
-  ].filter((name, index, all) => name && all.indexOf(name) === index);
-
+async function chatGemini(userContent, imageBase64) {
+  const model = env.geminiModel || 'gemini-2.0-flash';
+  const parts = [{ text: userContent }];
+  if (imageBase64) {
+    parts.push({
+      inlineData: {
+        mimeType: 'image/jpeg',
+        data: imageBase64,
+      },
+    });
+  }
   const payload = {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-    contents: [{ role: 'user', parts: [{ text: userContent }] }],
+    contents: [{ role: 'user', parts }],
     generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 512,
+      temperature: 0.6,
+      maxOutputTokens: 220,
     },
   };
 
-  let lastDetail = 'Gemini chat failed';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': env.geminiApiKey,
+    },
+    body: JSON.stringify(payload),
+  });
 
-  for (const model of models) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-    let response;
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': env.geminiApiKey,
-        },
-        body: JSON.stringify(payload),
-      });
-    } catch (error) {
-      lastDetail = error.message || 'Gemini network error';
-      continue;
-    }
-
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      lastDetail = body.error?.message || `Gemini ${model} failed (${response.status})`;
-      console.error(`[companion] gemini ${model}:`, lastDetail);
-      continue;
-    }
-
-    const text = extractGeminiText(body);
-    if (text) {
-      return { text, provider: 'gemini' };
-    }
-    lastDetail = `Gemini ${model} returned no text`;
-    console.error('[companion]', lastDetail, JSON.stringify(body.candidates?.[0]?.finishReason || ''));
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const lastDetail = body.error?.message || `Gemini ${model} failed (${response.status})`;
+    console.error(`[companion] gemini ${model}:`, lastDetail);
+    throw new AppError(lastDetail, { statusCode: 502, code: 'AI_UPSTREAM' });
   }
 
-  throw new AppError(
-    'Gemini could not answer. Check GEMINI_API_KEY and that Generative Language API is enabled.',
-    { statusCode: 502, code: 'AI_UPSTREAM' },
-  );
+  const text = extractGeminiText(body);
+  if (text) {
+    return { text, provider: 'gemini' };
+  }
+  throw new AppError('Gemini returned no text', { statusCode: 502, code: 'AI_EMPTY' });
 }
 
 async function chat(input) {
@@ -167,11 +162,12 @@ async function chat(input) {
   }
 
   const userContent = buildUserPayload(input);
+  const imageBase64 = stripDataUrl(input.imageBase64);
 
   if (env.openaiApiKey) {
-    return chatOpenAi(userContent);
+    return chatOpenAi(userContent, imageBase64);
   }
-  return chatGemini(userContent);
+  return chatGemini(userContent, imageBase64);
 }
 
 async function speak({ text, language }) {

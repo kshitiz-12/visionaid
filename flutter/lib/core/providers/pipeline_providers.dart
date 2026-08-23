@@ -67,6 +67,7 @@ final assistantPipelineProvider = Provider<AssistantPipeline>((ref) {
     emergency: ref.watch(emergencyServiceProvider),
     companion: ref.watch(companionClientProvider),
     memory: ref.watch(conversationMemoryProvider),
+    labeler: ref.watch(sceneLabelerProvider),
   );
   ref.onDispose(pipeline.dispose);
   return pipeline;

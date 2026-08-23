@@ -19,7 +19,7 @@ class ConversationMemory {
     if (assistant.trim().isNotEmpty) {
       _turns.add({'role': 'assistant', 'content': assistant.trim()});
     }
-    while (_turns.length > 12) {
+    while (_turns.length > 6) {
       _turns.removeAt(0);
     }
   }

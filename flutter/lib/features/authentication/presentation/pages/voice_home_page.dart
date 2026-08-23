@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
@@ -66,6 +68,7 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
   }
 
   Future<void> _welcome() async {
+    unawaited(ref.read(companionClientProvider).wake());
     await _ensureCorePermissions();
     final prefs = await SharedPreferences.getInstance();
     final heard = prefs.getBool('visionaid_welcome_spoken') ?? false;
@@ -75,12 +78,11 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
 
     final message = lang.code == 'hi'
         ? (heard
-            ? 'VisionAid तैयार है। मुझसे कुछ भी पूछो, प्लान करो, कॉल करो, या गाइड मी कहो। बंद करने के लिए क्विट कहो।'
-            : 'नमस्ते${name.isEmpty ? '' : ' $name'}. मैं साथ हूँ। सवाल पूछो, कॉल करो, या गाइड मी कहो।')
+            ? 'VisionAid तैयार है। मुझसे कुछ भी पूछो — प्लान, सवाल, बातचीत। कॉल के लिए नाम बोलो। गाइड मी से कैमरा चलेगा।'
+            : 'नमस्ते${name.isEmpty ? '' : ' $name'}. मैं साथ हूँ। मन में जो हो, पूछो।')
         : (heard
-            ? 'VisionAid is ready. Ask me anything, plan something, call a name, or say guide me. Say quit to close.'
-            : 'Hello${name.isEmpty ? '' : ' $name'}. I am right here with you. Ask me anything, '
-                'say call a name, or say guide me to walk with you.');
+            ? 'VisionAid is ready. Ask me anything on your mind. Say a name to call, or guide me only if you want the camera.'
+            : 'Hello${name.isEmpty ? '' : ' $name'}. I am here. Ask me anything.');
 
     if (!mounted) {
       return;
@@ -139,7 +141,7 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
 
     try {
       await tts.stop();
-      await Future<void>.delayed(const Duration(milliseconds: 350));
+      await Future<void>.delayed(const Duration(milliseconds: 180));
       final spoken = await stt.listen(localeId: lang.sttLocale);
       if (!mounted) {
         return;

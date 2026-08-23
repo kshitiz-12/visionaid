@@ -21,7 +21,6 @@ class ContextEngineImpl implements ContextEngine {
     'dining table': 0.55,
     'toilet': 0.5,
     'tv': 0.35,
-    'laptop': 0.4,
     'cell phone': 0.55,
     'microwave': 0.35,
     'oven': 0.4,
@@ -76,6 +75,24 @@ class ContextEngineImpl implements ContextEngine {
     'stairs': 0.9,
     'exit': 0.9,
     'sign': 0.75,
+    'people': 0.8,
+    'furniture': 0.5,
+    'plant': 0.35,
+    'tree': 0.4,
+    'street': 0.55,
+    'road': 0.6,
+    'room': 0.3,
+    'kitchen': 0.4,
+    'building': 0.45,
+    'window': 0.45,
+    'purse': 0.55,
+    'phone': 0.5,
+    'laptop': 0.7,
+    'headphones': 0.65,
+    'keyboard': 0.45,
+    'mouse': 0.4,
+    'screen': 0.45,
+    'indoors': 0.25,
   };
 
   static const _navRisk = <String, double>{
@@ -95,6 +112,8 @@ class ContextEngineImpl implements ContextEngine {
     'couch': 0.45,
     'dining table': 0.55,
     'knife': 0.6,
+    'street': 0.5,
+    'road': 0.55,
   };
 
   @override
@@ -150,9 +169,12 @@ class ContextEngineImpl implements ContextEngine {
     final ranked = rank(detections: detections, intentTarget: intentTarget);
 
     if (ranked.isEmpty) {
-      return const ContextDecision(
-        shouldSpeak: true,
-        spokenMessage: 'I do not see a clear object ahead yet. Wait, then take a small step.',
+      final looking = intentTarget.trim();
+      return ContextDecision(
+        shouldSpeak: looking.isNotEmpty,
+        spokenMessage: looking.isEmpty
+            ? 'Still scanning ahead.'
+            : 'I do not see $looking yet. Keep the phone pointed ahead.',
         ranked: [],
         reason: 'empty_scene',
       );
@@ -234,7 +256,8 @@ class ContextEngineImpl implements ContextEngine {
     if (label.contains('handbag') ||
         label.contains('backpack') ||
         label.contains('suitcase') ||
-        label.contains('purse')) {
+        label.contains('purse') ||
+        label == 'bag') {
       if (target == 'purse' || target == 'bag' || target == 'handbag') {
         return 1.0;
       }
