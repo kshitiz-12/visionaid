@@ -72,7 +72,7 @@ class _SetupPageState extends ConsumerState<SetupPage> {
 
     try {
       await tts.stop();
-      await Future<void>.delayed(const Duration(milliseconds: 150));
+      await Future<void>.delayed(const Duration(milliseconds: 550));
       setState(() => _status = 'Listening…');
       final spoken = await stt.listen(
         localeId: lang.sttLocale,

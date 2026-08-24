@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'core/config/app_config.dart';
+import 'core/network/companion_client.dart';
 import 'core/router/app_router.dart';
 import 'core/services/supabase_service.dart';
 import 'core/theme/app_theme.dart';
@@ -24,6 +27,7 @@ Future<void> main() async {
   await AppConfig.load();
   await SupabaseService.initialize();
   await WakelockPlus.enable();
+  unawaited(CompanionClient().wake(timeout: const Duration(seconds: 20)));
 
   runApp(const ProviderScope(child: VisionAidApp()));
 }

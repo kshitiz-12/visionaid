@@ -1,4 +1,5 @@
 import '../../vision/domain/services/object_detector_service.dart';
+import '../../walking/data/box_size_depth_provider.dart';
 import '../domain/guide_config.dart';
 import '../domain/guide_models.dart';
 import 'announcement_cooldown_service.dart';
@@ -382,7 +383,8 @@ class GuideAlertEngine {
       ),
     );
     final band = scoring.bandFor(prio);
-    if (prio < config.announceThreshold) {
+    final namedClose = _namedAndClose(snap, pathS, distS, conf);
+    if (prio < config.announceThreshold && !namedClose) {
       return _Ranked.suppress(
         snap: snap,
         key: key,
@@ -509,6 +511,29 @@ class GuideAlertEngine {
     return 0.0;
   }
 
+  bool _namedAndClose(
+    GuideObjectSnapshot snap,
+    double pathS,
+    double distS,
+    double conf,
+  ) {
+    final label = snap.label.trim().toLowerCase();
+    if (label.isEmpty ||
+        label == 'obstacle' ||
+        label == 'wall' ||
+        label == 'object') {
+      return false;
+    }
+    if (conf < 0.32 || pathS < 0.40) {
+      return false;
+    }
+    if (distS >= 0.40 || snap.boxProximity >= 0.10) {
+      return true;
+    }
+    final metres = snap.distanceMeters;
+    return metres != null && metres <= 2.5;
+  }
+
   GuideObjectSnapshot _toSnapshot(RawDetection d) {
     final fw = d.frameWidth <= 0 ? 0.0 : d.frameWidth;
     final fh = d.frameHeight <= 0 ? 0.0 : d.frameHeight;
@@ -531,7 +556,10 @@ class GuideAlertEngine {
       boundingBox: box,
       centerX: cx,
       centerY: cy,
-      distanceMeters: d.distanceMeters,
+      distanceMeters: d.distanceMeters ??
+          (d.distance > 0
+              ? BoxSizeDepthProvider.metresFromBoxFraction(d.distance)
+              : null),
       direction: direction,
       movementState: d.isMoving ? MovementState.moving : MovementState.unknown,
       trackingId: d.trackingId,

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import 'user_prefs.dart';
+import 'speech_sanitizer.dart';
 
 abstract class TextToSpeechService {
   Future<void> speak(String text);
@@ -53,8 +54,12 @@ class AndroidTextToSpeechService implements TextToSpeechService {
     }
     await _ensureReady();
     await stop();
+    final spoken = SpeechSanitizer.clean(text);
+    if (spoken.isEmpty) {
+      throw StateError('Text to speak cannot be empty');
+    }
     _speaking = Completer<void>();
-    await _tts.speak(text);
+    await _tts.speak(spoken);
     try {
       await _speaking!.future.timeout(const Duration(seconds: 20));
     } on TimeoutException {

@@ -148,9 +148,21 @@ class AssistantPipeline {
   }
 
   bool _needsFreshScene(UserIntent intent) {
-    return intent.type == IntentType.sceneDescribe ||
+    if (intent.type == IntentType.sceneDescribe ||
         intent.type == IntentType.findObject ||
-        intent.type == IntentType.navigation;
+        intent.type == IntentType.navigation ||
+        intent.type == IntentType.readText) {
+      return true;
+    }
+    if (intent.type != IntentType.conversation &&
+        intent.type != IntentType.help &&
+        intent.type != IntentType.unknown) {
+      return false;
+    }
+    final t = intent.rawText.toLowerCase();
+    return RegExp(
+      r'\b(this|that|here|front|ahead|table|room|see|look|around|photo|bottle|chair|what is that|ye kya|dikhai|samne)\b',
+    ).hasMatch(t);
   }
 
   Future<PipelineResult> _chat(UserIntent intent) async {

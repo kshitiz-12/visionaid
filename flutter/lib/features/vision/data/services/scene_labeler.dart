@@ -72,7 +72,7 @@ class SceneLabeler {
     }
 
     for (final o in objects) {
-      add(o);
+      add(_namedBox(o, labels));
     }
     for (final l in labels) {
       add(
@@ -92,6 +92,24 @@ class SceneLabeler {
       return b.distance.compareTo(a.distance);
     });
     return merged.take(8).toList();
+  }
+
+  static RawDetection _namedBox(RawDetection box, List<RawDetection> labels) {
+    final current = SceneVocab.normalize(box.label);
+    if (current.isNotEmpty && current != 'obstacle' && current != 'wall') {
+      return box.copyWith(label: current);
+    }
+    for (final label in labels) {
+      final name = SceneVocab.normalize(label.label);
+      if (name.isEmpty || name == 'obstacle' || name == 'wall') {
+        continue;
+      }
+      return box.copyWith(
+        label: name,
+        confidence: label.confidence > box.confidence ? label.confidence : box.confidence,
+      );
+    }
+    return box;
   }
 
   static List<RawDetection> preferNamed(

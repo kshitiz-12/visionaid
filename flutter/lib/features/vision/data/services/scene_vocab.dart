@@ -27,6 +27,12 @@ class SceneVocab {
     'line',
     'rectangle',
     'circle',
+    'indoor',
+    'indoors',
+    'interior design',
+    'room',
+    'ceiling',
+    'floor',
   };
 
   static const _aliases = <String, String>{
@@ -89,9 +95,6 @@ class SceneVocab {
     'window': 'window',
     'wall': 'wall',
     'brick wall': 'wall',
-    'brick': 'wall',
-    'interior design': 'wall',
-    'building': 'building',
     'kitchen': 'kitchen',
     'street': 'street',
     'road': 'road',
@@ -109,8 +112,6 @@ class SceneVocab {
     'car': 'car',
     'bus': 'bus',
     'truck': 'truck',
-    'indoors': 'indoors',
-    'indoor': 'indoors',
     'money': 'money',
     'cash': 'money',
     'currency': 'money',

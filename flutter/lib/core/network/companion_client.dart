@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
 import '../exceptions/app_exception.dart';
+import '../services/speech_sanitizer.dart';
 
 class CompanionReply {
   const CompanionReply({
@@ -77,26 +78,39 @@ class CompanionClient {
       if (imageBase64.isNotEmpty) 'imageBase64': imageBase64,
     };
     late http.Response response;
+    await wake(timeout: const Duration(seconds: 12));
+    Future<http.Response> send(Duration timeout) => _postChat(body, timeout);
+    final firstTimeout = imageBase64.isNotEmpty
+        ? const Duration(seconds: 28)
+        : const Duration(seconds: 22);
     try {
-      response = await _postChat(
-        body,
-        imageBase64.isNotEmpty
-            ? const Duration(seconds: 18)
-            : const Duration(seconds: 10),
-      );
+      response = await send(firstTimeout);
     } on TimeoutException {
-      throw const AppException(
-        'The assistant is slow right now. Call, emergency, and look ahead still work.',
-        code: 'NETWORK_ERROR',
-      );
+      await wake(timeout: const Duration(seconds: 15));
+      try {
+        response = await send(firstTimeout);
+      } on TimeoutException {
+        throw const AppException(
+          'The assistant is slow right now. Call, emergency, and look ahead still work.',
+          code: 'NETWORK_ERROR',
+        );
+      }
     } catch (error) {
       if (error is AppException) {
         rethrow;
       }
-      throw const AppException(
-        'No internet to the assistant. Call, emergency, and look ahead still work.',
-        code: 'NETWORK_ERROR',
-      );
+      await wake(timeout: const Duration(seconds: 10));
+      try {
+        response = await send(firstTimeout);
+      } catch (retryError) {
+        if (retryError is AppException) {
+          rethrow;
+        }
+        throw const AppException(
+          'No internet to the assistant. Call, emergency, and look ahead still work.',
+          code: 'NETWORK_ERROR',
+        );
+      }
     }
 
     Map<String, dynamic>? payload;
@@ -122,7 +136,7 @@ class CompanionClient {
       throw const AppException('Empty assistant reply', code: 'AI_EMPTY');
     }
     return CompanionReply(
-      text: text,
+      text: SpeechSanitizer.clean(text),
       provider: data['provider'] as String? ?? '',
       naturalVoice: data['naturalVoice'] as bool? ?? false,
     );

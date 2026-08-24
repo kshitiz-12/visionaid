@@ -80,45 +80,76 @@ class ResponseGenerator {
     final dir = directionPhrase(direction);
     final dist = metresOrBoxPhrase(snap.distanceMeters, proximity);
     final where = SpatialRelations.phrase(snap, others);
+    final extra = extras(others, skipLabel: label);
 
     if (reached && !_isVehicle(label) && label != 'stairs') {
-      return 'Stop. ${_cap(label)} reached.';
+      if (label == 'wall' || label == 'obstacle') {
+        return 'Stop. Obstacle $dir, $dist.$extra';
+      }
+      return 'Stop. ${_cap(label)} $dir, $dist.$extra';
     }
 
     if (label == 'wall' || label == 'obstacle') {
       if (band == PriorityBand.critical || risk >= 0.80) {
-        return 'Stop. Obstacle ahead.';
+        return 'Stop. Obstacle $dir, $dist.$extra';
       }
-      return "There's an obstacle $dir, $dist.";
+      return 'Obstacle $dir, $dist.$extra';
     }
     if (label == 'stairs') {
-      return 'Stairs $dir, $dist. Slow down.';
+      return 'Stairs $dir, $dist. Slow down.$extra';
     }
     if (band == PriorityBand.critical || risk >= 0.85) {
       if (_isVehicle(label)) {
         final motion = movement == MovementState.approaching
-            ? 'A vehicle is coming from $dir.'
+            ? 'A vehicle is coming from $dir, $dist.'
             : 'There is a vehicle $dir, $dist.';
-        return 'Careful. $motion';
+        return 'Careful. $motion$extra';
       }
-      return 'Stop. Something is in your way $dir.';
+      return 'Stop. ${_cap(label)} $dir, $dist.$extra';
     }
     if (_isVehicle(label)) {
       if (movement == MovementState.approaching) {
-        return 'Careful. A vehicle is coming from $dir.';
+        return 'Careful. A vehicle is coming from $dir, $dist.$extra';
       }
-      return 'There is a vehicle $dir, $dist.';
+      return 'There is a vehicle $dir, $dist.$extra';
     }
 
     if (gettingCloser) {
-      return 'Keep coming. The $label is closer, still $dir.';
+      return 'Keep coming. The $label is closer, $dir, $dist.$extra';
     }
 
     if (where != null && where.isNotEmpty) {
-      return 'The $label is $where, $dir.';
+      return 'The $label is $where, $dir, $dist.$extra';
     }
 
-    return 'The $label is $dir, $dist.';
+    return 'The $label is $dir, $dist.$extra';
+  }
+
+  String extras(List<GuideObjectSnapshot> snaps, {required String skipLabel}) {
+    final lines = <String>[];
+    for (final snap in snaps) {
+      final label = snap.label.trim().toLowerCase();
+      if (label.isEmpty ||
+          label == skipLabel.trim().toLowerCase() ||
+          label == 'obstacle' ||
+          label == 'wall' ||
+          label == 'object') {
+        continue;
+      }
+      if (snap.confidence < 0.32) {
+        continue;
+      }
+      lines.add(
+        '${_cap(label)} ${directionPhrase(snap.direction)}, ${metresOrBoxPhrase(snap.distanceMeters, snap.boxProximity)}',
+      );
+      if (lines.length >= 2) {
+        break;
+      }
+    }
+    if (lines.isEmpty) {
+      return '';
+    }
+    return ' ${lines.join('. ')}.';
   }
 
   String targetFound({

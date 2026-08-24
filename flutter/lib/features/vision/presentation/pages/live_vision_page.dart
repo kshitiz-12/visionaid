@@ -15,6 +15,7 @@ import '../../../guide_alerts/domain/guide_models.dart';
 import '../../../walking/data/walking_latency.dart';
 import '../../../walking/data/walking_pipeline.dart';
 import '../../data/services/camera_image_converter.dart';
+import '../../../walking/data/hazard_cue.dart';
 
 /// On-device walking loop. CameraX ImageAnalysis uses KEEP_ONLY_LATEST;
 /// [_busyFrame] drops work when inference is behind so only the newest frame is used.
@@ -41,6 +42,7 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
   String _debug = '';
   bool _research = false;
   bool _voiceLoop = false;
+  final _hazard = HazardCue();
 
   @override
   void initState() {
@@ -219,6 +221,18 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
       }
 
       final tick = _walk.tick(raw: objects, latency: latency);
+      await _hazard.pingIfWithinMetre(
+        tick.occupancy.closestMetres ??
+            (tick.snapshots.isEmpty
+                ? null
+                : tick.snapshots
+                    .map((s) => s.distanceMeters)
+                    .whereType<double>()
+                    .fold<double?>(
+                      null,
+                      (best, m) => best == null || m < best ? m : best,
+                    )),
+      );
       final mode = widget.findTarget.trim().isEmpty
           ? GuideMode.liveGuide
           : GuideMode.targetSearch;

@@ -141,7 +141,7 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
 
     try {
       await tts.stop();
-      await Future<void>.delayed(const Duration(milliseconds: 180));
+      await Future<void>.delayed(const Duration(milliseconds: 550));
       final spoken = await stt.listen(localeId: lang.sttLocale);
       if (!mounted) {
         return;

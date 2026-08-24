@@ -39,7 +39,7 @@ class _LanguagePageState extends ConsumerState<LanguagePage> {
         'Welcome to VisionAid. Which language do you prefer? '
         'Say English, or say Hindi.',
       );
-      await Future<void>.delayed(const Duration(milliseconds: 180));
+      await Future<void>.delayed(const Duration(milliseconds: 550));
       if (!mounted) {
         return;
       }

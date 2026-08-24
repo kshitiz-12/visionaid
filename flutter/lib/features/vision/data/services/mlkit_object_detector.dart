@@ -141,10 +141,10 @@ class MlKitObjectDetector implements ObjectDetectorService {
         ? 0.5
         : (box.left + box.width / 2) / size.width;
     final inPath = cx > 0.28 && cx < 0.72;
-    if (frac >= 0.32 && inPath) {
+    if (frac >= 0.48 && inPath) {
       return 'wall';
     }
-    if (frac >= 0.14 && inPath) {
+    if (frac >= 0.22 && inPath) {
       return 'obstacle';
     }
     return '';

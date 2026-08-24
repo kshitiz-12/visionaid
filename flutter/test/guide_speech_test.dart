@@ -62,4 +62,35 @@ void main() {
     expect(speech.metresOrBoxPhrase(1.037, 0.2), 'about one metre ahead');
     expect(speech.metresOrBoxPhrase(null, 0.25), 'about a meter away');
   });
+
+  test('safety speech keeps approximate distance and object name', () {
+    final chair = GuideObjectSnapshot(
+      label: 'chair',
+      confidence: 0.8,
+      boundingBox: (left: 0.4, top: 0.2, right: 0.6, bottom: 0.8),
+      direction: GuideDirection.center,
+      distanceMeters: 1.1,
+      boxProximity: 0.3,
+    );
+    expect(
+      speech.live(
+        snap: chair,
+        others: [chair],
+        band: PriorityBand.announce,
+        risk: 0.2,
+        movement: MovementState.unknown,
+      ),
+      contains('about one metre ahead'),
+    );
+    expect(
+      speech.live(
+        snap: chair,
+        others: [chair],
+        band: PriorityBand.announce,
+        risk: 0.2,
+        movement: MovementState.unknown,
+      ),
+      contains('chair'),
+    );
+  });
 }
