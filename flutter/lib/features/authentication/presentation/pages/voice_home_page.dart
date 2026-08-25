@@ -13,6 +13,8 @@ import '../../../../core/providers/pipeline_providers.dart';
 import '../../../../core/providers/voice_providers.dart';
 import '../../../../core/services/spoken_confirm.dart';
 import '../../../../core/services/user_prefs.dart';
+import '../../../../core/widgets/multi_tap_tracker.dart';
+import '../../../../core/widgets/two_finger_down.dart';
 import '../../../communication/domain/contact_matcher.dart';
 import '../../../intent/domain/entities/user_intent.dart';
 import '../../../voice/presentation/widgets/voice_command_button.dart';
@@ -40,17 +42,40 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
   List<PhoneContact> _picks = [];
   PhoneContact? _chosen;
   bool _awaitingReturn = false;
+  late final MultiTapTracker _taps;
+  late final TwoFingerDown _twoFingers;
+  bool _closing = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
+    _taps = MultiTapTracker(
+      onSingle: () {
+        if (!_busy) {
+          unawaited(_listenAndHandle());
+        }
+      },
+      onDouble: () {
+        if (!_busy) {
+          unawaited(_openLookAhead());
+        }
+      },
+      onTriple: () {
+        unawaited(HapticFeedback.heavyImpact());
+        unawaited(_runQuick('Emergency'));
+      },
+    );
+    _twoFingers = TwoFingerDown(onTwo: () {
+      unawaited(_quit());
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _welcome());
   }
 
   @override
   void dispose() {
+    _taps.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -78,11 +103,11 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
 
     final message = lang.code == 'hi'
         ? (heard
-            ? 'VisionAid तैयार है। मुझसे कुछ भी पूछो — प्लान, सवाल, बातचीत। कॉल के लिए नाम बोलो। गाइड मी से कैमरा चलेगा।'
-            : 'नमस्ते${name.isEmpty ? '' : ' $name'}. मैं साथ हूँ। मन में जो हो, पूछो।')
+            ? 'VisionAid तैयार है। एक टैप बोलो। दो टैप आगे देखो। तीन टैप इमरजेंसी। दो उंगली नीचे से ऐप बंद।'
+            : 'नमस्ते${name.isEmpty ? '' : ' $name'}. एक टैप बोलो। दो टैप गाइड। तीन टैप इमरजेंसी। दो उंगली नीचे से बंद।')
         : (heard
-            ? 'VisionAid is ready. Ask me anything on your mind. Say a name to call, or guide me only if you want the camera.'
-            : 'Hello${name.isEmpty ? '' : ' $name'}. I am here. Ask me anything.');
+            ? 'VisionAid is ready. One tap to speak. Two taps look ahead. Three taps emergency. Two fingers down to close.'
+            : 'Hello${name.isEmpty ? '' : ' $name'}. One tap to speak, two for look ahead, three for emergency. Two fingers down to close.');
 
     if (!mounted) {
       return;
@@ -98,6 +123,14 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
     await Permission.phone.request();
   }
 
+  Future<void> _openLookAhead() async {
+    await HapticFeedback.mediumImpact();
+    if (!mounted) {
+      return;
+    }
+    context.push('/live');
+  }
+
   void _resetDialog() {
     _dialog = _Dialog.idle;
     _channel = CommAction.call;
@@ -108,6 +141,12 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
   }
 
   Future<void> _quit() async {
+    if (_closing) {
+      return;
+    }
+    _closing = true;
+    _taps.reset();
+    await HapticFeedback.heavyImpact();
     await ref.read(textToSpeechProvider).speak('Closing VisionAid. Goodbye.');
     await WakelockPlus.disable();
     SystemNavigator.pop();
@@ -164,7 +203,8 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
   }
 
   Future<void> _runQuick(String spokenText) async {
-    if (_busy) {
+    final emergency = spokenText.toLowerCase() == 'emergency';
+    if (_busy && !emergency) {
       return;
     }
     setState(() {
@@ -361,6 +401,14 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       return;
     }
 
+    if (intent.type == IntentType.emergency) {
+      final result = await ref.read(emergencyServiceProvider).placeCall(
+            contactName: intent.contactName,
+          );
+      await _say(result, alert: true);
+      return;
+    }
+
     if (intent.type == IntentType.communication) {
       if (intent.commAction == CommAction.sms ||
           intent.commAction == CommAction.whatsapp) {
@@ -382,8 +430,20 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       return;
     }
 
-    final result =
-        await ref.read(assistantPipelineProvider).handleSpoken(spokenText);
+    var preview = '';
+    final result = await ref.read(assistantPipelineProvider).handleSpoken(
+          spokenText,
+          onSentence: (sentence) {
+            if (sentence.trim().isEmpty || !mounted) {
+              return;
+            }
+            preview = preview.isEmpty ? sentence : '$preview $sentence';
+            setState(() {
+              _status = preview;
+              _isAlert = false;
+            });
+          },
+        );
     await _say(
       result.spokenReply,
       alert: result.isAlert || result.intent.type == IntentType.emergency,
@@ -401,12 +461,12 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
           return;
         }
         await _say(
-          'Say quit to close VisionAid. The back button will not close the app.',
+          'Two fingers down on the screen to close VisionAid. The back button will not close the app.',
         );
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('VisionAid++'),
+          title: const Text('VisionAid'),
           actions: [
             IconButton(
               tooltip: 'Settings',
@@ -416,66 +476,119 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
           ],
         ),
         body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: Center(
-                    child: Semantics(
-                      button: true,
-                      label: 'Microphone. Double tap and speak.',
-                      child: InkWell(
-                        onTap: _busy ? null : _listenAndHandle,
-                        customBorder: const CircleBorder(),
-                        child: CircleAvatar(
-                          radius: 96,
-                          backgroundColor: _listening
-                              ? theme.colorScheme.error
-                              : (_busy
-                                  ? theme.colorScheme.secondary
-                                  : theme.colorScheme.primary),
-                          child: Icon(
-                            _listening
-                                ? Icons.hearing
-                                : (_busy ? Icons.hourglass_top : Icons.mic),
-                            size: 88,
-                            color: theme.colorScheme.onPrimary,
+          child: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (event) => _twoFingers.down(event.pointer),
+            onPointerUp: (event) => _twoFingers.up(event.pointer),
+            onPointerCancel: (event) => _twoFingers.up(event.pointer),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                if (_closing || _twoFingers.blocked) {
+                  return;
+                }
+                _taps.tap();
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Tap once to speak. Twice look ahead. Three times emergency. Two fingers down to close.',
+                      style: theme.textTheme.bodyLarge?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: Center(
+                        child: Semantics(
+                          button: true,
+                          label:
+                              'Tap anywhere once to speak. Twice for look ahead. Three times for emergency. Two fingers down to close.',
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 220),
+                            width: 196,
+                            height: 196,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: _listening
+                                    ? [
+                                        theme.colorScheme.error,
+                                        theme.colorScheme.error.withValues(alpha: 0.75),
+                                      ]
+                                    : (_busy
+                                        ? [
+                                            theme.colorScheme.tertiary,
+                                            theme.colorScheme.primary,
+                                          ]
+                                        : [
+                                            theme.colorScheme.primary,
+                                            const Color(0xFF1D4ED8),
+                                          ]),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: (_listening
+                                          ? theme.colorScheme.error
+                                          : theme.colorScheme.primary)
+                                      .withValues(alpha: 0.35),
+                                  blurRadius: 28,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              _listening
+                                  ? Icons.hearing
+                                  : (_busy ? Icons.hourglass_top : Icons.mic),
+                              size: 80,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
+                    Text(
+                      _listening
+                          ? 'Listening…'
+                          : (_busy ? 'Working…' : 'Tap anywhere to speak'),
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 14),
+                    VoiceStatusBanner(message: _status, isAlert: _isAlert),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: VoiceCommandButton(
+                            label: 'Look ahead',
+                            tonal: true,
+                            onPressed: _busy
+                                ? () {}
+                                : () => unawaited(_openLookAhead()),
+                            icon: Icons.visibility_outlined,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: VoiceCommandButton(
+                            label: 'Emergency',
+                            danger: true,
+                            onPressed: () => unawaited(_runQuick('Emergency')),
+                            icon: Icons.warning_amber_rounded,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                Text(
-                  _listening
-                      ? 'Listening…'
-                      : (_busy ? 'Working…' : 'Speak. I stay on this screen.'),
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineSmall,
-                ),
-                const SizedBox(height: 16),
-                VoiceStatusBanner(message: _status, isAlert: _isAlert),
-                const SizedBox(height: 16),
-                VoiceCommandButton(
-                  label: 'Speak',
-                  onPressed: _busy ? () {} : _listenAndHandle,
-                  icon: Icons.mic,
-                ),
-                const SizedBox(height: 12),
-                VoiceCommandButton(
-                  label: 'Look ahead',
-                  onPressed: _busy ? () {} : () => context.push('/live'),
-                  icon: Icons.visibility_outlined,
-                ),
-                const SizedBox(height: 12),
-                VoiceCommandButton(
-                  label: 'Emergency',
-                  onPressed: _busy ? () {} : () => _runQuick('Emergency'),
-                  icon: Icons.warning_amber_rounded,
-                ),
-              ],
+              ),
             ),
           ),
         ),

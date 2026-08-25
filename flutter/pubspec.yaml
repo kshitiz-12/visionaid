@@ -53,6 +53,7 @@ dependencies:
   google_mlkit_image_labeling: ^0.15.0
   wakelock_plus: ^1.4.0
   audioplayers: ^6.5.0
+  geolocator: ^13.0.2
 
 dev_dependencies:
   flutter_test:
@@ -79,6 +80,7 @@ flutter:
   assets:
     - .env
     - assets/models/efficientdet_lite0.tflite
+    - assets/audio/proximity_beep.wav
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

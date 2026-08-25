@@ -8,7 +8,7 @@ import 'scene_vocab.dart';
 class SceneLabeler {
   SceneLabeler()
       : _labeler = ImageLabeler(
-          options: ImageLabelerOptions(confidenceThreshold: 0.22),
+          options: ImageLabelerOptions(confidenceThreshold: 0.14),
         );
 
   final ImageLabeler _labeler;
@@ -17,7 +17,7 @@ class SceneLabeler {
     final labels = await _labeler.processImage(image);
     final named = <RawDetection>[];
     for (final item in labels) {
-      if (item.confidence < 0.22) {
+      if (item.confidence < 0.14) {
         continue;
       }
       final friendly = SceneVocab.normalize(item.label);

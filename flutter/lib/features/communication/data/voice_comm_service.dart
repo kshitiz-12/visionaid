@@ -13,23 +13,29 @@ class VoiceCommService {
 
   Future<ContactLookup> find(String name) => _directory.lookup(name);
 
-  Future<String> call(PhoneContact contact) async {
-    final phoneStatus = await Permission.phone.request();
-    if (!phoneStatus.isGranted) {
-      return 'I need phone permission to call ${contact.displayName}. Enable Phone in settings, then try again.';
+  /// Returns true if the dialer/native call UI started.
+  Future<bool> tryCall(PhoneContact contact) async {
+    try {
+      final phoneStatus = await Permission.phone.request();
+      if (phoneStatus.isGranted) {
+        final started = await FlutterPhoneDirectCaller.callNumber(contact.phone);
+        if (started == true) {
+          return true;
+        }
+      }
+      final tel = Uri(scheme: 'tel', path: contact.phone);
+      return launchUrl(tel, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
     }
+  }
 
-    final started = await FlutterPhoneDirectCaller.callNumber(contact.phone);
-    if (started == true) {
+  Future<String> call(PhoneContact contact) async {
+    final started = await tryCall(contact);
+    if (started) {
       return 'Calling ${contact.displayName} now.';
     }
-
-    final tel = Uri(scheme: 'tel', path: contact.phone);
-    final ok = await launchUrl(tel, mode: LaunchMode.externalApplication);
-    if (!ok) {
-      return 'I could not start the call to ${contact.displayName}.';
-    }
-    return 'Calling ${contact.displayName} now.';
+    return 'I could not start the call to ${contact.displayName}.';
   }
 
   Future<String> sendSms(PhoneContact contact, String message) async {

@@ -5,24 +5,31 @@ import '../domain/services/intent_engine.dart';
 class IntentEngineImpl implements IntentEngine {
   static final _patterns = <IntentType, List<RegExp>>{
     IntentType.quit: [
-      RegExp(r'\b(quit|exit|close\s+(the\s+)?app|shut\s+down)\b'),
-      RegExp(r'\b(बाहर\s*निकलो|ऐप\s*बंद)\b'),
+      RegExp(r'\b(quit|quiet|quite|exit|close\s+(the\s+)?app|shut\s+down)\b'),
+      RegExp(r'बाहर\s*निकलो|ऐप\s*बंद|बंद\s*करो'),
     ],
     IntentType.cancel: [
       RegExp(
-        r'\b(cancel|never\s*mind|quiet|go\s+home|stop\s+listening|stop\s+talking|stop\s+guiding|stop\s+walking|stop\s+looking)\b',
+        r'\b(cancel|never\s*mind|go\s+home|stop\s+listening|stop\s+talking|stop\s+guiding|stop\s+walking|stop\s+looking)\b',
       ),
     ],
     IntentType.emergency: [
-      RegExp(r'\b(emergency|danger|sos|i\s*am\s*hurt|call\s*(for\s*)?help)\b'),
+      RegExp(
+        r'\b(emergency|emerjency|emargency|imergency|emergensi|danger|sos|i\s*am\s*hurt|i.?m\s*hurt|call\s*(for\s*)?help|call\s*me|phone\s*me|dial\s*me)\b',
+      ),
       RegExp(r'^(help me|help me please)$'),
-      RegExp(r'\b(आपातकाल|खतरा)\b'),
+      RegExp(
+        r'(आपातकाल|खतरा|इमरजेंसी|इमरजेन्सी|एमर्जेंसी|एमरजेंसी|बचाओ|मदद\s*करो)',
+      ),
     ],
     IntentType.communication: [
       RegExp(
-        r'\b(call|dial|whatsapp|wa\s*tsapp|message|text|sms|send)\b',
+        r'\b(call|dial|whatsapp|wa\s*tsapp|message|text|sms)\b',
       ),
-      RegExp(r'\b(कॉल|मैसेज|फोन|व्हाट्सऐप|व्हाट्सएप)\b'),
+      RegExp(
+        r'(कॉल|मैसेज|व्हाट्सऐप|व्हाट्सएप|फोन\s*(करो|लगाओ|लगा|करें)|मुझे\s*कॉल)',
+      ),
+      RegExp(r'\b(call|phone|dial)\s+(karo|kar|lagao|laga)\b'),
     ],
     IntentType.readText: [
       RegExp(
@@ -84,6 +91,7 @@ class IntentEngineImpl implements IntentEngine {
 
   static const _ignoredContactTokens = {
     'me',
+    'myself',
     'help',
     'someone',
     'somebody',
@@ -105,6 +113,16 @@ class IntentEngineImpl implements IntentEngine {
     'on',
     'via',
     'using',
+    'karo',
+    'kar',
+    'lagao',
+    'laga',
+    'please',
+    'करो',
+    'लगाओ',
+    'लगा',
+    'को',
+    'मुझे',
   };
 
   @override
@@ -141,9 +159,14 @@ class IntentEngineImpl implements IntentEngine {
       confidence = 0.55;
     }
 
-    final isComm = type == IntentType.communication || type == IntentType.emergency;
+    var isComm = type == IntentType.communication || type == IntentType.emergency;
+    var contactName = isComm ? _extractContactName(lower) : '';
+    if (type == IntentType.communication && _meansEmergencyContact(lower, contactName)) {
+      type = IntentType.emergency;
+      contactName = '';
+      isComm = true;
+    }
     final target = isComm ? '' : _extractObjectTarget(lower);
-    final contactName = isComm ? _extractContactName(lower) : '';
     final messageBody = isComm ? _extractBody(lower) : '';
 
     final commAction = switch (type) {
@@ -162,6 +185,19 @@ class IntentEngineImpl implements IntentEngine {
       commAction: commAction,
       isActionable: type != IntentType.cancel,
     );
+  }
+
+  bool _meansEmergencyContact(String lower, String contactName) {
+    final name = contactName.trim().toLowerCase();
+    if (name.isEmpty ||
+        name == 'me' ||
+        name == 'myself' ||
+        name == 'emergency' ||
+        name == 'contact' ||
+        name.contains('emergency')) {
+      return !RegExp(r'\b(whatsapp|message|text|sms|मैसेज|व्हाट्सऐप)\b').hasMatch(lower);
+    }
+    return false;
   }
 
   CommAction _commAction(String lower) {

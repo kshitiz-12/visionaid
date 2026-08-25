@@ -38,7 +38,10 @@ class AssistantPipeline {
   final ConversationMemory memory;
   final SceneLabeler labeler;
 
-  Future<PipelineResult> handleSpoken(String spokenText) async {
+  Future<PipelineResult> handleSpoken(
+    String spokenText, {
+    void Function(String sentence)? onSentence,
+  }) async {
     final intent = await intentEngine.classify(spokenText);
 
     if (!intent.isActionable || intent.type == IntentType.cancel) {
@@ -52,7 +55,7 @@ class AssistantPipeline {
       case IntentType.help:
       case IntentType.conversation:
       case IntentType.unknown:
-        return _chat(intent);
+        return _chat(intent, onSentence: onSentence);
       case IntentType.emergency:
         final callMsg = await emergency.placeCall(
           contactName: intent.contactName,
@@ -109,11 +112,11 @@ class AssistantPipeline {
           spokenReply: 'Closing VisionAid. Goodbye.',
         );
       case IntentType.readText:
-        return _runOcr(intent);
+        return _runOcr(intent, onSentence: onSentence);
       case IntentType.navigation:
       case IntentType.findObject:
       case IntentType.sceneDescribe:
-        return _runVisionThenChat(intent);
+        return _runVisionThenChat(intent, onSentence: onSentence);
       case IntentType.cancel:
         return PipelineResult(intent: intent, spokenReply: 'Okay, cancelled.');
     }
@@ -165,7 +168,10 @@ class AssistantPipeline {
     ).hasMatch(t);
   }
 
-  Future<PipelineResult> _chat(UserIntent intent) async {
+  Future<PipelineResult> _chat(
+    UserIntent intent, {
+    void Function(String sentence)? onSentence,
+  }) async {
     var scene = '';
     var imageBase64 = '';
     if (_needsFreshScene(intent)) {
@@ -178,13 +184,19 @@ class AssistantPipeline {
     final name = await UserPrefs.getName();
 
     try {
-      final reply = await companion.chat(
+      final reply = await companion.chatStream(
         message: intent.rawText,
         language: language.code,
         userName: name,
         sceneSummary: scene,
-        history: memory.history,
+        history: memory.history
+            .where(
+              (turn) =>
+                  !(turn['content'] ?? '').toLowerCase().startsWith('stop.'),
+            )
+            .toList(),
         imageBase64: imageBase64,
+        onSentence: onSentence,
       );
       memory.addTurn(user: intent.rawText, assistant: reply.text);
       return PipelineResult(intent: intent, spokenReply: reply.text);
@@ -213,11 +225,17 @@ class AssistantPipeline {
     }
   }
 
-  Future<PipelineResult> _runVisionThenChat(UserIntent intent) async {
-    return _chat(intent);
+  Future<PipelineResult> _runVisionThenChat(
+    UserIntent intent, {
+    void Function(String sentence)? onSentence,
+  }) async {
+    return _chat(intent, onSentence: onSentence);
   }
 
-  Future<PipelineResult> _runOcr(UserIntent intent) async {
+  Future<PipelineResult> _runOcr(
+    UserIntent intent, {
+    void Function(String sentence)? onSentence,
+  }) async {
     try {
       final shot = await camera.captureJpeg();
       final text = await ocr.recognizeText(shot.path);
@@ -227,7 +245,7 @@ class AssistantPipeline {
       }
       final language = AppLanguage.fromCode(await UserPrefs.getLanguageCode());
       try {
-        final reply = await companion.chat(
+        final reply = await companion.chatStream(
           message: clipped.isEmpty
               ? 'Look at this photo. Read any text or money you can see, in a natural spoken way.'
               : 'Read any print in the photo naturally, including money amounts if a note is visible. OCR hint: $clipped',
@@ -236,6 +254,7 @@ class AssistantPipeline {
           sceneSummary: memory.lastScene,
           history: memory.history,
           imageBase64: shot.imageBase64,
+          onSentence: onSentence,
         );
         memory.addTurn(user: intent.rawText, assistant: reply.text);
         return PipelineResult(intent: intent, spokenReply: reply.text);

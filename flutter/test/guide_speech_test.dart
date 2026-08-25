@@ -86,11 +86,40 @@ void main() {
       speech.live(
         snap: chair,
         others: [chair],
-        band: PriorityBand.announce,
-        risk: 0.2,
+        band: PriorityBand.critical,
+        risk: 0.9,
+        movement: MovementState.unknown,
+        reached: true,
+      ),
+      contains('Chair'),
+    );
+    final unnamed = GuideObjectSnapshot(
+      label: 'object',
+      confidence: 0.8,
+      boundingBox: (left: 0.4, top: 0.2, right: 0.6, bottom: 0.8),
+      direction: GuideDirection.left,
+      distanceMeters: 1.0,
+      boxProximity: 0.3,
+    );
+    expect(
+      speech.live(
+        snap: unnamed,
+        others: [unnamed],
+        band: PriorityBand.critical,
+        risk: 0.9,
         movement: MovementState.unknown,
       ),
-      contains('chair'),
+      isNot(contains('Object')),
+    );
+    expect(
+      speech.live(
+        snap: unnamed,
+        others: [unnamed],
+        band: PriorityBand.critical,
+        risk: 0.9,
+        movement: MovementState.unknown,
+      ),
+      contains('Tall thing'),
     );
   });
 }

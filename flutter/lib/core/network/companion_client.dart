@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
 import '../exceptions/app_exception.dart';
+import '../services/sentence_buffer.dart';
 import '../services/speech_sanitizer.dart';
 
 class CompanionReply {
@@ -29,6 +30,15 @@ class CompanionClient {
   final http.Client _http;
   DateTime? _lastWakeOk;
   DateTime? _skipCloudTtsUntil;
+  Timer? _keepAlive;
+
+  void startKeepAlive() {
+    _keepAlive?.cancel();
+    unawaited(wake(timeout: const Duration(seconds: 12)));
+    _keepAlive = Timer.periodic(const Duration(minutes: 9), (_) {
+      unawaited(wake(timeout: const Duration(seconds: 8)));
+    });
+  }
 
   /// Hits a cheap health route so Render is less likely to stall the first chat.
   Future<bool> wake({Duration timeout = const Duration(seconds: 8)}) async {
@@ -38,7 +48,7 @@ class CompanionClient {
     }
     try {
       final response = await _http
-          .get(Uri.parse('$_baseUrl/api/health'))
+          .get(Uri.parse('$_baseUrl/ping'))
           .timeout(timeout);
       if (response.statusCode >= 200 && response.statusCode < 300) {
         _lastWakeOk = DateTime.now();
@@ -59,6 +69,143 @@ class CompanionClient {
           body: jsonEncode(body),
         )
         .timeout(timeout);
+  }
+
+  Map<String, dynamic> _chatBody({
+    required String message,
+    required String language,
+    required String userName,
+    required String sceneSummary,
+    required List<Map<String, String>> history,
+    required String imageBase64,
+  }) {
+    return {
+      'message': message,
+      'language': language,
+      'userName': userName,
+      'sceneSummary': sceneSummary,
+      'history': history.length > 4 ? history.sublist(history.length - 4) : history,
+      if (imageBase64.isNotEmpty) 'imageBase64': imageBase64,
+    };
+  }
+
+  Future<CompanionReply> chatStream({
+    required String message,
+    required String language,
+    String userName = '',
+    String sceneSummary = '',
+    List<Map<String, String>> history = const [],
+    String imageBase64 = '',
+    void Function(String sentence)? onSentence,
+  }) async {
+    final body = _chatBody(
+      message: message,
+      language: language,
+      userName: userName,
+      sceneSummary: sceneSummary,
+      history: history,
+      imageBase64: imageBase64,
+    );
+    await wake(timeout: const Duration(seconds: 12));
+    try {
+      final request = http.Request(
+        'POST',
+        Uri.parse('$_baseUrl/api/assistant/chat/stream'),
+      );
+      request.headers.addAll({
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+      });
+      request.body = jsonEncode(body);
+      final streamed = await _http.send(request).timeout(
+            imageBase64.isNotEmpty
+                ? const Duration(seconds: 28)
+                : const Duration(seconds: 22),
+          );
+      if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
+        return chat(
+          message: message,
+          language: language,
+          userName: userName,
+          sceneSummary: sceneSummary,
+          history: history,
+          imageBase64: imageBase64,
+        );
+      }
+
+      final sentences = SentenceBuffer();
+      final full = StringBuffer();
+      var buffer = '';
+      try {
+        await for (final chunk in streamed.stream
+            .timeout(const Duration(seconds: 16))
+            .transform(utf8.decoder)) {
+          buffer += chunk;
+          final blocks = buffer.split('\n\n');
+          buffer = blocks.removeLast();
+          for (final block in blocks) {
+            final line = block
+                .split('\n')
+                .firstWhere((row) => row.startsWith('data:'), orElse: () => '');
+            if (line.isEmpty) {
+              continue;
+            }
+            final raw = line.substring(5).trim();
+            if (raw.isEmpty) {
+              continue;
+            }
+            Map<String, dynamic> event;
+            try {
+              event = jsonDecode(raw) as Map<String, dynamic>;
+            } catch (_) {
+              continue;
+            }
+            final err = event['error'] as String?;
+            if (err != null && err.isNotEmpty) {
+              throw AppException(err, code: 'AI_UPSTREAM');
+            }
+            final piece = event['text'] as String? ?? '';
+            if (piece.isNotEmpty) {
+              full.write(piece);
+              for (final sentence in sentences.add(piece)) {
+                onSentence?.call(SpeechSanitizer.clean(sentence));
+              }
+            }
+          }
+        }
+      } on TimeoutException {
+        if (full.isEmpty) {
+          return chat(
+            message: message,
+            language: language,
+            userName: userName,
+            sceneSummary: sceneSummary,
+            history: history,
+            imageBase64: imageBase64,
+          );
+        }
+      }
+      final leftover = sentences.flush();
+      if (leftover.isNotEmpty) {
+        onSentence?.call(SpeechSanitizer.clean(leftover));
+      }
+      final text = SpeechSanitizer.clean(full.toString());
+      if (text.isEmpty) {
+        throw const AppException('Empty assistant reply', code: 'AI_EMPTY');
+      }
+      return CompanionReply(text: text, provider: 'gemini', naturalVoice: false);
+    } on AppException {
+      rethrow;
+    } catch (_) {
+      return chat(
+        message: message,
+        language: language,
+        userName: userName,
+        sceneSummary: sceneSummary,
+        history: history,
+        imageBase64: imageBase64,
+      );
+    }
   }
 
   Future<CompanionReply> chat({

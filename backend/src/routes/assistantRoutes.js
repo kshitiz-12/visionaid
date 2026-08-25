@@ -1,6 +1,6 @@
 const express = require('express');
 const rateLimit = require('express-rate-limit');
-const { postChat, postSpeak, getStatus } = require('../controllers/assistantController');
+const { postChat, postChatStream, postSpeak, getStatus } = require('../controllers/assistantController');
 
 const router = express.Router();
 
@@ -20,6 +20,7 @@ const assistantLimiter = rateLimit({
 router.use(assistantLimiter);
 router.get('/status', getStatus);
 router.post('/chat', postChat);
+router.post('/chat/stream', postChatStream);
 router.post('/speak', postSpeak);
 
 module.exports = router;

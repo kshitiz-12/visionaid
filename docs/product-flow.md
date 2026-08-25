@@ -1,56 +1,50 @@
-# VisionAid++ — Exact Product Flow
+# VisionAid — what it does and how to test it
 
-No login. No OTP.
+No login. English or Hindi. Name and emergency contact stay on the phone.
 
-## 1. First open — language
+## Home (big mic)
 
-TTS: “Welcome to VisionAid. Which language do you prefer?”  
-User picks **English** or **Hindi**.
+Stay on this screen for talk, call, and questions. **Do not open Look ahead** unless you want walking.
 
-## 2. Simple profile setup
+Tap **anywhere** on the home screen (you do not need to hit the mic). Wait about half a second after the last tap so it can count:
 
-- Name  
-- Emergency contact phone  
-Saved on device only.
+| Taps | Action |
+|------|--------|
+| 1 | Speak (same as the mic) |
+| 2 | Look ahead |
+| 3 | Emergency call |
+| Two fingers down at once | Close the app |
 
-## 3. Voice Home
+TalkBack’s double-tap-to-activate can fight this. Turn TalkBack off while testing these gestures, or use the labelled buttons.
 
-A spoken companion. Ask questions, plan, call someone, or say **guide me**.
+| You say / tap | What should happen |
+|---------------|-------------------|
+| Tap **once** anywhere, then ask anything (“What is potato in English?”, “aaloo ko English mein kya kehte hain”, plans, jokes) | Waits for Gemini, then **speaks the full answer**. Working… then the mic comes back. Needs internet + Render. |
+| “What is in front of me?” / “ye kya hai?” | Takes **one photo** and describes it (clock-face). Not the live walking loop. |
+| “Call Harry” | Dials that contact. Not AI. |
+| “Call me” / “Emergency” / tap **Emergency** | Dials the **saved emergency number**. If the call fails, opens SMS with location. |
+| “Text Mom …” / “WhatsApp Harry saying …” | On-phone messaging. |
+| “Guide me” or tap **Look ahead** | Live camera walking. **No Gemini.** |
+| “Read this” | Photo + OCR, then spoken. |
+| “Quit” / “quiet” / two fingers down | Closes the app. Back button does not. |
 
-## 4. Speech → intent, then action
+## Look ahead (walking)
 
-| Intent | What happens |
-|--------|----------------|
-| Conversation / help | Cloud companion answers in the user's language |
-| Scene / find | Camera snapshot + companion (e.g. “where is my purse?”) |
-| Navigation | Live camera walk / stop guide |
-| OCR | Read print, then companion speaks it naturally |
-| Call / SMS / WhatsApp | On-device contacts |
-| Emergency | Call saved contact |
-| Quit | Close the app |
+Hold the phone **chest-high, camera forward**, walk slowly.
 
-## 5. Live camera (guide)
+You should hear direction + distance, and a **beep + vibration** if something is within about 1 metre.
 
-Say **guide me** or tap Look ahead. On-device stream. Speaks **stop / wait / what is close**, with a cooldown.
+- Named when it can: chair, bottle, person, table…
+- If it cannot name it: **tall / wide / low / nearby thing** — never a potato from this screen.
 
-## 6. Context engine
+Say **stop looking**, tap Stop looking, or **tap twice** anywhere to go home. **Three taps** starts emergency. **Two fingers down** closes the app.
 
-Ranks detections by confidence, proximity, motion, intent, importance, navigation risk. Speaks hazards and matches, not every object.
+**Wrong test:** asking “what is aalu” while Look ahead is open. That screen only listens for stop. Ask on the **home mic**.
 
-## 7. Voice
+## Settings
 
-If `OPENAI_API_KEY` is set on the backend, replies play with **OpenAI TTS**. Otherwise the device voice is used.
+Language, your name, emergency name/number, voice speed. No research overlay.
 
-Cloud keys stay on the server. The app sends **text** and short on-device scene facts, not a live video feed.
+## Honest limits
 
-**Calls / SMS / WhatsApp:** *Call Harry*, *Text Harry*, or *WhatsApp Harry saying I’m late*.  
-**Stay on screen:** Back does not quit. Say **quit**. Home still leaves the app (not a kiosk).
-
-## Try it
-
-```bash
-cd flutter
-flutter run
-```
-
-Set `OPENAI_API_KEY` (or `GEMINI_API_KEY`) on the Node server / Render, then ask a question, say **where is my purse**, or **guide me**.
+Distances are approximate. Walking cannot name food. First chat after Render sleeps can be slow. Rebuild the APK after UI/code changes.

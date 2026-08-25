@@ -20,7 +20,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   String _languageCode = 'en';
   bool _loading = true;
   bool _saving = false;
-  bool _research = false;
 
   @override
   void initState() {
@@ -42,7 +41,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     _emergencyController.text = await UserPrefs.getEmergencyContact();
     _voiceSpeed = await UserPrefs.getVoiceSpeed();
     _languageCode = await UserPrefs.getLanguageCode();
-    _research = await UserPrefs.getResearchMode();
     if (mounted) {
       setState(() => _loading = false);
     }
@@ -55,7 +53,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     await UserPrefs.setEmergencyContact(_emergencyController.text);
     await UserPrefs.setVoiceSpeed(_voiceSpeed);
     await UserPrefs.setLanguageCode(_languageCode);
-    await UserPrefs.setResearchMode(_research);
     final lang = AppLanguage.fromCode(_languageCode);
     await ref.read(textToSpeechProvider).setLocale(lang.ttsLocale);
     await ref.read(textToSpeechProvider).speak(
@@ -84,89 +81,85 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : ListView(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
                 children: [
                   Text(
-                    'Stored on this phone only.',
-                    style: Theme.of(context).textTheme.bodyLarge,
+                    'Saved only on this phone. No account.',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                   ),
-                  const SizedBox(height: 24),
-                  DropdownButtonFormField<String>(
-                    initialValue: _languageCode,
-                    decoration: const InputDecoration(
-                      labelText: 'Language',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: AppLanguage.supported
-                        .map(
-                          (lang) => DropdownMenuItem(
-                            value: lang.code,
-                            child: Text(lang.label),
+                  const SizedBox(height: 20),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        children: [
+                          DropdownButtonFormField<String>(
+                            initialValue: _languageCode,
+                            decoration: const InputDecoration(labelText: 'Language'),
+                            items: AppLanguage.supported
+                                .map(
+                                  (lang) => DropdownMenuItem(
+                                    value: lang.code,
+                                    child: Text(lang.label),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() => _languageCode = value);
+                              }
+                            },
                           ),
-                        )
-                        .toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() => _languageCode = value);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Your name',
-                      border: OutlineInputBorder(),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _nameController,
+                            decoration: const InputDecoration(labelText: 'Your name'),
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _emergencyNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Emergency contact name',
+                              hintText: 'e.g. Harry',
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: _emergencyController,
+                            decoration: const InputDecoration(
+                              labelText: 'Emergency contact phone',
+                            ),
+                            keyboardType: TextInputType.phone,
+                          ),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Voice speed',
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
+                          ),
+                          Slider(
+                            value: _voiceSpeed,
+                            min: 0.2,
+                            max: 0.8,
+                            onChanged: (value) => setState(() => _voiceSpeed = value),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _emergencyNameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Emergency contact name',
-                      hintText: 'e.g. Harry',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _emergencyController,
-                    decoration: const InputDecoration(
-                      labelText: 'Emergency contact phone',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.phone,
-                  ),
-                  const SizedBox(height: 24),
-                  Text('Voice speed: ${_voiceSpeed.toStringAsFixed(2)}'),
-                  Slider(
-                    value: _voiceSpeed,
-                    min: 0.2,
-                    max: 0.8,
-                    onChanged: (value) => setState(() => _voiceSpeed = value),
-                  ),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('Research overlay'),
-                    subtitle: const Text(
-                      'Shows scores and latency. Not for everyday use.',
-                    ),
-                    value: _research,
-                    onChanged: (value) => setState(() => _research = value),
-                  ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
                   FilledButton(
                     onPressed: _saving ? null : _save,
                     child: Text(_saving ? 'Saving…' : 'Save'),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   OutlinedButton(
                     onPressed: _redoSetup,
                     child: const Text('Change language / redo setup'),
-                  ),
-                  TextButton(
-                    onPressed: () => context.go('/home'),
-                    child: const Text('Back to voice assistant'),
                   ),
                 ],
               ),

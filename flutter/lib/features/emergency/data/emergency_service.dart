@@ -1,7 +1,11 @@
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
+
 import '../../../core/services/user_prefs.dart';
 import '../../communication/data/contact_directory.dart';
 import '../../communication/data/voice_comm_service.dart';
 import '../../communication/domain/contact_matcher.dart';
+import 'emergency_message.dart';
 
 /// Emergency still uses the same contact + call stack as everyday voice comms.
 class EmergencyService {
@@ -21,7 +25,50 @@ class EmergencyService {
       }
       return 'No emergency contact saved. Add one in settings.';
     }
-    return _comm.call(lookup.matches.first);
+    final contact = lookup.matches.first;
+    final started = await _comm.tryCall(contact);
+    if (started) {
+      return 'Calling ${contact.displayName} now.';
+    }
+    return _smsWithLocation(contact);
+  }
+
+  Future<String> _smsWithLocation(PhoneContact contact) async {
+    final userName = await UserPrefs.getName();
+    final fix = await _lastFix();
+    final body = EmergencyMessage.body(
+      userName: userName,
+      latitude: fix.$1,
+      longitude: fix.$2,
+    );
+    await Permission.sms.request();
+    final opened = await _comm.sendSms(contact, body);
+    if (opened.toLowerCase().contains('could not')) {
+      return 'Call failed and I could not send SMS. $opened';
+    }
+    return 'Call did not start. $opened';
+  }
+
+  Future<(double?, double?)> _lastFix() async {
+    final status = await Permission.locationWhenInUse.request();
+    if (!status.isGranted) {
+      return (null, null);
+    }
+    try {
+      final last = await Geolocator.getLastKnownPosition();
+      if (last != null) {
+        return (last.latitude, last.longitude);
+      }
+      final current = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+          timeLimit: Duration(seconds: 4),
+        ),
+      );
+      return (current.latitude, current.longitude);
+    } catch (_) {
+      return (null, null);
+    }
   }
 
   Future<String> sendSms({

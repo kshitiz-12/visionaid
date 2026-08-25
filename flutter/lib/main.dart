@@ -11,6 +11,8 @@ import 'core/router/app_router.dart';
 import 'core/services/supabase_service.dart';
 import 'core/theme/app_theme.dart';
 
+final _keepAliveClient = CompanionClient();
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -27,7 +29,7 @@ Future<void> main() async {
   await AppConfig.load();
   await SupabaseService.initialize();
   await WakelockPlus.enable();
-  unawaited(CompanionClient().wake(timeout: const Duration(seconds: 20)));
+  _keepAliveClient.startKeepAlive();
 
   runApp(const ProviderScope(child: VisionAidApp()));
 }

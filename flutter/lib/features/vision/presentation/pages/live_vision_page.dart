@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -8,14 +11,20 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../../core/providers/pipeline_providers.dart';
 import '../../../../core/providers/voice_providers.dart';
 import '../../../../core/services/user_prefs.dart';
+import '../../../../core/widgets/multi_tap_tracker.dart';
+import '../../../../core/widgets/two_finger_down.dart';
 import '../../../guide_alerts/data/guide_alert_engine.dart';
 import '../../../guide_alerts/data/voice_announcement_queue.dart';
 import '../../../guide_alerts/domain/guide_config.dart';
 import '../../../guide_alerts/domain/guide_models.dart';
+import '../../../walking/data/frame_throttle.dart';
+import '../../../walking/data/hazard_cue.dart';
 import '../../../walking/data/walking_latency.dart';
 import '../../../walking/data/walking_pipeline.dart';
 import '../../data/services/camera_image_converter.dart';
-import '../../../walking/data/hazard_cue.dart';
+import '../../data/services/mlkit_object_detector.dart';
+import '../../data/services/scene_labeler.dart';
+import '../../domain/services/object_detector_service.dart';
 
 /// On-device walking loop. CameraX ImageAnalysis uses KEEP_ONLY_LATEST;
 /// [_busyFrame] drops work when inference is behind so only the newest frame is used.
@@ -39,28 +48,49 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
   GuideAlertEngine? _alerts;
   VoiceAnnouncementQueue? _queue;
   final _walk = WalkingPipeline();
-  String _debug = '';
-  bool _research = false;
   bool _voiceLoop = false;
   final _hazard = HazardCue();
+  final _frames = FrameThrottle();
+  MlKitObjectDetector? _guideDetector;
+  SceneLabeler? _guideLabeler;
+  List<RawDetection> _lastNames = const [];
+  late final MultiTapTracker _taps;
+  late final TwoFingerDown _twoFingers;
+  bool _emergencyBusy = false;
+  bool _closing = false;
 
   @override
   void initState() {
     super.initState();
     WakelockPlus.enable();
+    _taps = MultiTapTracker(
+      onSingle: () {},
+      onDouble: () {
+        if (_closing) {
+          return;
+        }
+        unawaited(HapticFeedback.mediumImpact());
+        unawaited(_leave());
+      },
+      onTriple: () => unawaited(_emergencyFromWalk()),
+    );
+    _twoFingers = TwoFingerDown(onTwo: () {
+      unawaited(_quitApp());
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _start());
   }
 
   Future<void> _start() async {
     final tts = ref.read(textToSpeechProvider);
-    _research = await UserPrefs.getResearchMode();
     _alerts = GuideAlertEngine(
-      config: GuideConfig(debugMode: _research, researchLog: _research),
+      config: const GuideConfig(),
     );
     if (widget.findTarget.trim().isNotEmpty) {
       _alerts!.startTargetSearch(widget.findTarget);
     }
     _queue ??= VoiceAnnouncementQueue(tts);
+    _guideDetector ??= MlKitObjectDetector(stream: true);
+    _guideLabeler ??= SceneLabeler();
     await _walk.warmup();
 
     final status = await Permission.camera.request();
@@ -140,7 +170,7 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
       _controller = controller;
       setState(() {
         _starting = false;
-        _status = 'Live. Point ahead.';
+        _status = 'Live. Point ahead. Two taps go home. Three taps emergency. Two fingers down to close.';
       });
       await tts.speak(_status);
       await controller.startImageStream(_onFrame);
@@ -188,7 +218,10 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
   }
 
   Future<void> _onFrame(CameraImage image) async {
-    if (_busyFrame || !_streaming || _controller == null) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (!_streaming ||
+        _controller == null ||
+        _frames.shouldSkip(busy: _busyFrame, nowMs: now)) {
       return;
     }
     _busyFrame = true;
@@ -213,8 +246,17 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
       _badFrames = 0;
 
       latency.inferenceStartedMs = DateTime.now().millisecondsSinceEpoch;
-      final objects =
-          await ref.read(objectDetectorProvider).detectInput(input);
+      final detector = _guideDetector;
+      if (detector == null) {
+        return;
+      }
+      var objects = await detector.detectInput(input);
+      try {
+        _lastNames = await _guideLabeler?.label(input) ?? const [];
+      } catch (_) {}
+      if (_lastNames.isNotEmpty) {
+        objects = SceneLabeler.merge(objects, _lastNames);
+      }
       latency.inferenceCompletedMs = DateTime.now().millisecondsSinceEpoch;
       if (!mounted) {
         return;
@@ -243,18 +285,7 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
       );
       tick.latency.decisionCompletedMs = DateTime.now().millisecondsSinceEpoch;
 
-      if (_research) {
-        final line = result.debugLines.isNotEmpty
-            ? result.debugLines.first
-            : tick.latency.debugLine(fps: tick.fps);
-        _debug =
-            '${tick.latency.debugLine(fps: tick.fps)}\n${_walk.depth.sourceId}\n$line';
-      }
-
       if (result.announcements.isEmpty) {
-        if (_research && mounted) {
-          setState(() {});
-        }
         return;
       }
 
@@ -266,13 +297,8 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
           _alert = alert.safetyOverride ||
               alert.band == PriorityBand.critical ||
               alert.band == PriorityBand.highPriority;
-          if (_research) {
-            _debug =
-                '${tick.latency.debugLine(fps: tick.fps)}\n${alert.debugLine}';
-          }
         });
       }
-      ref.read(conversationMemoryProvider).rememberScene(alert.spoken);
       await _queue?.submit(alert);
     } catch (_) {
       if (mounted) {
@@ -282,6 +308,39 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
       }
     } finally {
       _busyFrame = false;
+    }
+  }
+
+  Future<void> _quitApp() async {
+    if (_closing) {
+      return;
+    }
+    _closing = true;
+    _taps.reset();
+    await HapticFeedback.heavyImpact();
+    await _stop();
+    await ref.read(textToSpeechProvider).speak('Closing VisionAid. Goodbye.');
+    await WakelockPlus.disable();
+    SystemNavigator.pop();
+  }
+
+  Future<void> _emergencyFromWalk() async {
+    if (_closing || _emergencyBusy) {
+      return;
+    }
+    _emergencyBusy = true;
+    await HapticFeedback.heavyImpact();
+    try {
+      final msg = await ref.read(emergencyServiceProvider).placeCall();
+      if (mounted) {
+        setState(() {
+          _status = msg;
+          _alert = true;
+        });
+      }
+      await ref.read(textToSpeechProvider).speak(msg);
+    } finally {
+      _emergencyBusy = false;
     }
   }
 
@@ -304,16 +363,29 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
     }
     await _queue?.stop();
     await ref.read(textToSpeechProvider).stop();
+    await _releaseGuideMl();
+  }
+
+  Future<void> _releaseGuideMl() async {
+    final detector = _guideDetector;
+    final labeler = _guideLabeler;
+    _guideDetector = null;
+    _guideLabeler = null;
+    await detector?.dispose();
+    await labeler?.dispose();
+    await _hazard.dispose();
   }
 
   @override
   void dispose() {
+    _taps.dispose();
     _streaming = false;
     final controller = _controller;
     _controller = null;
     if (controller != null) {
       controller.dispose();
     }
+    unawaited(_releaseGuideMl());
     super.dispose();
   }
 
@@ -323,59 +395,69 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
     final preview = _controller;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: const Color(0xFF070B14),
       appBar: AppBar(
-        title: const Text('Live vision'),
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        title: const Text('Look ahead'),
         leading: IconButton(
           tooltip: 'Stop live vision',
           onPressed: _leave,
           icon: const Icon(Icons.close),
         ),
       ),
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: _starting || preview == null || !preview.value.isInitialized
-                  ? const Center(child: CircularProgressIndicator())
-                  : CameraPreview(preview),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  Text(
-                    _status,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: _alert ? theme.colorScheme.error : Colors.white,
-                    ),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
+                    child: _starting || preview == null || !preview.value.isInitialized
+                        ? const Center(child: CircularProgressIndicator())
+                        : CameraPreview(preview),
                   ),
-                  if (_research && _debug.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        _debug,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                  child: Column(
+                    children: [
+                      Text(
+                        _status,
                         textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: Colors.white70,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          color: _alert ? const Color(0xFFFF8A80) : Colors.white,
                         ),
                       ),
-                    ),
-                  const SizedBox(height: 16),
-                  FilledButton.tonal(
-                    onPressed: _leave,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(56),
-                    ),
-                    child: const Text('Stop looking'),
+                      const SizedBox(height: 16),
+                      FilledButton.tonal(
+                        onPressed: _leave,
+                        child: const Text('Stop looking'),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          Positioned.fill(
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (event) {
+                _twoFingers.down(event.pointer);
+                if (_closing || _twoFingers.blocked) {
+                  _taps.reset();
+                  return;
+                }
+                _taps.tap();
+              },
+              onPointerUp: (event) => _twoFingers.up(event.pointer),
+              onPointerCancel: (event) => _twoFingers.up(event.pointer),
+            ),
+          ),
+        ],
       ),
     );
   }

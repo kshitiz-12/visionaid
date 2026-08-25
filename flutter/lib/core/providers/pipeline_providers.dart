@@ -28,7 +28,7 @@ final cameraCaptureProvider = Provider<CameraCaptureService>((ref) {
 });
 
 final objectDetectorProvider = Provider<ObjectDetectorService>((ref) {
-  final detector = MlKitObjectDetector(stream: true);
+  final detector = MlKitObjectDetector(stream: false);
   ref.onDispose(detector.dispose);
   return detector;
 });

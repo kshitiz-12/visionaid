@@ -36,7 +36,7 @@ class CameraCaptureService {
 
     final controller = CameraController(
       back,
-      ResolutionPreset.high,
+      ResolutionPreset.medium,
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.jpeg,
     );
@@ -61,9 +61,9 @@ class CameraCaptureService {
     if (decoded == null) {
       return base64Encode(bytes);
     }
-    final width = decoded.width > 1024 ? 1024 : decoded.width;
+    final width = decoded.width > 640 ? 640 : decoded.width;
     final resized = img.copyResize(decoded, width: width);
-    final jpeg = img.encodeJpg(resized, quality: 68);
+    final jpeg = img.encodeJpg(resized, quality: 45);
     return base64Encode(jpeg);
   }
 }

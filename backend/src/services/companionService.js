@@ -7,9 +7,12 @@ Two jobs:
 1) Conversation: they may ask about ANYTHING — feelings, plans, knowledge, maths, jokes. Answer that. Do not drag every reply to the camera.
 2) Seeing: if a PHOTO is attached, you are the eyes. Name real things. Place them with clock-face directions (12 o'clock is straight ahead, 3 o'clock is right, 9 o'clock is left). Say approximate distance as "very close", "about one metre", or "about two metres". Example: "Water bottle at your 2 o'clock, about one metre away on the table." Never invent objects.
 
-Speak their language. 2–3 short spoken sentences. Warm, not robotic.
+Speak their language. Give a complete spoken answer of 2 to 5 sentences. Finish every sentence with a period.
+Never start with their name. Do not greet. Answer the question first.
+If they ask what a Hindi word is in English (for example aalu), say the English word clearly, like: "Aalu is called potato in English."
+If they asked about food, a word, or knowledge, answer that fully. Do not mention walking, obstacles, or Stop unless the photo shows a real hazard.
 Output plain speech only. No Markdown, no asterisks, no hashtags, no bullet lists, no headings.
-Never say you are Gemini or ChatGPT. You cannot place calls. Danger: tell them to say Emergency.`;
+Never say you are Gemini or ChatGPT. You cannot place calls. If they need a phone call, tell them to say Call or Emergency.`;
 
 function hasAnyKey() {
   return Boolean(env.openaiApiKey || env.geminiApiKey);
@@ -39,7 +42,7 @@ function buildUserPayload({ message, language, userName, sceneSummary, history }
   const lines = [];
   lines.push(`User language: ${languageName(language)}. Reply only in that language.`);
   if (userName) {
-    lines.push(`Their name: ${userName}.`);
+    lines.push('Do not say their name. Answer directly.');
   }
   if (sceneSummary) {
     lines.push(`On-device guesses (may be wrong; trust the photo more):\n${sceneSummary}`);
@@ -121,9 +124,7 @@ function stripMarkup(text) {
     .trim();
 }
 
-async function chatGemini(userContent, imageBase64) {
-  // Postman-verified: only gemini-3.6-flash generateContent works for this API key.
-  const model = 'gemini-3.6-flash';
+function geminiPayload(userContent, imageBase64) {
   const parts = [{ text: userContent }];
   if (imageBase64) {
     parts.push({
@@ -133,27 +134,35 @@ async function chatGemini(userContent, imageBase64) {
       },
     });
   }
-  const payload = {
+  return {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [{ role: 'user', parts }],
     generationConfig: {
       temperature: 0.6,
-      maxOutputTokens: 180,
+      maxOutputTokens: 512,
     },
   };
+}
 
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent` +
-    `?key=${encodeURIComponent(env.geminiApiKey)}`;
-  const response = await fetch(url, {
+function geminiUrl(method) {
+  const model = 'gemini-3.6-flash';
+  return (
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:${method}` +
+    `?key=${encodeURIComponent(env.geminiApiKey)}`
+  );
+}
+
+async function chatGemini(userContent, imageBase64) {
+  const payload = geminiPayload(userContent, imageBase64);
+  const response = await fetch(geminiUrl('generateContent'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const lastDetail = body.error?.message || `Gemini ${model} failed (${response.status})`;
-    console.error(`[companion] gemini ${model}:`, lastDetail);
+    const lastDetail = body.error?.message || `Gemini failed (${response.status})`;
+    console.error('[companion] gemini:', lastDetail);
     throw new AppError(lastDetail, { statusCode: 502, code: 'AI_UPSTREAM' });
   }
   const text = stripMarkup(extractGeminiText(body));
@@ -164,6 +173,89 @@ async function chatGemini(userContent, imageBase64) {
     });
   }
   return { text, provider: 'gemini' };
+}
+
+async function* streamGemini(userContent, imageBase64) {
+  const payload = geminiPayload(userContent, imageBase64);
+  const url = `${geminiUrl('streamGenerateContent')}&alt=sse`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok || !response.body) {
+    const body = await response.json().catch(() => ({}));
+    const lastDetail = body.error?.message || `Gemini stream failed (${response.status})`;
+    throw new AppError(lastDetail, { statusCode: 502, code: 'AI_UPSTREAM' });
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let emitted = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    buf += decoder.decode(value, { stream: true });
+    const blocks = buf.split('\n\n');
+    buf = blocks.pop() || '';
+    for (const block of blocks) {
+      const line = block.split('\n').find((row) => row.startsWith('data:'));
+      if (!line) {
+        continue;
+      }
+      const raw = line.slice(5).trim();
+      if (!raw || raw === '[DONE]') {
+        continue;
+      }
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (_) {
+        continue;
+      }
+      const piece = extractGeminiText(parsed);
+      if (!piece) {
+        continue;
+      }
+      let delta = piece;
+      if (piece.startsWith(emitted)) {
+        delta = piece.slice(emitted.length);
+        emitted = piece;
+      } else {
+        emitted += piece;
+      }
+      if (delta) {
+        yield delta;
+      }
+    }
+  }
+}
+
+async function* chatStream(input) {
+  if (!hasAnyKey()) {
+    throw new AppError(
+      'AI companion is not configured. Set OPENAI_API_KEY or GEMINI_API_KEY on the server.',
+      { statusCode: 503, code: 'AI_NOT_CONFIGURED' },
+    );
+  }
+  const userContent = buildUserPayload(input);
+  const imageBase64 = stripDataUrl(input.imageBase64);
+  if (env.geminiApiKey) {
+    try {
+      yield* streamGemini(userContent, imageBase64);
+      return;
+    } catch (error) {
+      console.error('[companion] stream fallback:', error.message);
+      const full = await chatGemini(userContent, imageBase64);
+      yield full.text;
+      return;
+    }
+  }
+  const reply = await chatOpenAi(userContent, imageBase64);
+  yield stripMarkup(reply.text);
 }
 
 async function chat(input) {
@@ -239,6 +331,7 @@ async function speak({ text, language }) {
 
 module.exports = {
   chat,
+  chatStream,
   speak,
   hasAnyKey,
 };

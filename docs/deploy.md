@@ -91,6 +91,17 @@ If `/api/ready` is `503`, fix `DATABASE_URL` / Supabase keys and redeploy.
 
 > Free Render services sleep when idle; first request after sleep can take ~30–60s.
 
+Keep the service awake while you test:
+
+1. The app pings `GET /ping` on launch and every 9 minutes while it is open.
+2. For 24/7 wake (even with the app closed), add a free UptimeRobot HTTP monitor every 10 minutes to:
+
+```text
+https://YOUR-SERVICE.onrender.com/ping
+```
+
+`/ping` is a bare 200 before Express middleware. Do not use `/api/health` for keep-alive.
+
 ## 6. Connect Flutter to the live backend
 
 ```powershell

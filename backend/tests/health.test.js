@@ -20,7 +20,7 @@ async function shutdown(exitCode = 0) {
   });
 }
 
-function request(port, path) {
+function request(port, path, {json = true} = {}) {
   return new Promise((resolve, reject) => {
     const req = http.request(
       {
@@ -36,7 +36,10 @@ function request(port, path) {
           body += chunk;
         });
         res.on('end', () => {
-          resolve({ statusCode: res.statusCode, body: JSON.parse(body) });
+          resolve({
+            statusCode: res.statusCode,
+            body: json ? JSON.parse(body) : body,
+          });
         });
       },
     );
@@ -48,6 +51,11 @@ function request(port, path) {
 
 async function runHealthTest(port) {
   try {
+    const ping = await request(port, '/ping', { json: false });
+    if (ping.statusCode !== 200) {
+      throw new Error(`Ping failed: ${ping.statusCode} ${ping.body}`);
+    }
+
     const health = await request(port, '/api/health');
     if (health.statusCode !== 200 || health.body.data?.status !== 'ok') {
       throw new Error('Health check failed');

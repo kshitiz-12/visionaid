@@ -3,60 +3,85 @@ import 'package:flutter/material.dart';
 class AppTheme {
   const AppTheme._();
 
-  static ThemeData get lightTheme {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF0F5D9C),
-      brightness: Brightness.light,
+  static const seed = Color(0xFF2563EB);
+
+  static ThemeData get lightTheme => _build(Brightness.light);
+
+  static ThemeData get darkTheme => _build(Brightness.dark);
+
+  static ThemeData _build(Brightness brightness) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: seed,
+      brightness: brightness,
     );
+    final isDark = brightness == Brightness.dark;
 
     return ThemeData(
       useMaterial3: true,
-      colorScheme: colorScheme,
-      scaffoldBackgroundColor: const Color(0xFFF4F7FB),
-      textTheme: const TextTheme(
+      colorScheme: scheme,
+      visualDensity: VisualDensity.standard,
+      scaffoldBackgroundColor: isDark ? const Color(0xFF0C1220) : const Color(0xFFF3F6FC),
+      textTheme: TextTheme(
         headlineLarge: TextStyle(
-          fontSize: 32,
+          fontSize: 34,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.8,
+          color: scheme.onSurface,
+        ),
+        headlineSmall: TextStyle(
+          fontSize: 22,
           fontWeight: FontWeight.w700,
+          color: scheme.onSurface,
+        ),
+        titleLarge: TextStyle(
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          height: 1.35,
+          color: scheme.onSurface,
         ),
         bodyLarge: TextStyle(
-          fontSize: 18,
-          height: 1.5,
+          fontSize: 17,
+          height: 1.45,
+          color: scheme.onSurface,
         ),
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: colorScheme.surface,
-        foregroundColor: colorScheme.onSurface,
+        backgroundColor: Colors.transparent,
+        foregroundColor: scheme.onSurface,
         centerTitle: false,
         elevation: 0,
+        scrolledUnderElevation: 0,
       ),
-    );
-  }
-
-  static ThemeData get darkTheme {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF7CC8FF),
-      brightness: Brightness.dark,
-    );
-
-    return ThemeData(
-      useMaterial3: true,
-      colorScheme: colorScheme,
-      scaffoldBackgroundColor: const Color(0xFF0B1220),
-      textTheme: const TextTheme(
-        headlineLarge: TextStyle(
-          fontSize: 32,
-          fontWeight: FontWeight.w700,
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: isDark ? scheme.surfaceContainerHighest : Colors.white,
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: scheme.outlineVariant),
         ),
-        bodyLarge: TextStyle(
-          fontSize: 18,
-          height: 1.5,
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: scheme.primary, width: 2),
         ),
       ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: colorScheme.surface,
-        foregroundColor: colorScheme.onSurface,
-        centerTitle: false,
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(56),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          minimumSize: const Size.fromHeight(52),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        ),
+      ),
+      cardTheme: CardThemeData(
         elevation: 0,
+        color: isDark ? scheme.surfaceContainerHigh : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       ),
     );
   }

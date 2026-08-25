@@ -108,8 +108,8 @@ class MlKitObjectDetector implements ObjectDetectorService {
       if (named.isEmpty || named == 'object') {
         named = _barrierName(box: box, area: area, size: size);
       }
-      if (named.isEmpty) {
-        continue;
+      if (named.isEmpty || named == 'object') {
+        named = _shapeName(box: box, size: size);
       }
 
       detections.add(
@@ -148,6 +148,23 @@ class MlKitObjectDetector implements ObjectDetectorService {
       return 'obstacle';
     }
     return '';
+  }
+
+  String _shapeName({required Rect box, required Size? size}) {
+    final fh = size == null || size.height <= 0 ? 1.0 : size.height;
+    final fw = size == null || size.width <= 0 ? 1.0 : size.width;
+    final h = (box.height / fh).clamp(0.0, 1.0);
+    final w = (box.width / fw).clamp(0.0, 1.0);
+    if (h >= 0.55) {
+      return 'tall thing';
+    }
+    if (w >= 0.45) {
+      return 'wide thing';
+    }
+    if (h <= 0.18) {
+      return 'low thing';
+    }
+    return 'nearby thing';
   }
 
   double _fallbackArea(List<DetectedObject> objects) {

@@ -1,6 +1,6 @@
 const { z } = require('zod');
 const env = require('../config/env');
-const { chat, speak, hasAnyKey } = require('../services/companionService');
+const { chat, chatStream, speak, hasAnyKey } = require('../services/companionService');
 
 const historyItem = z.object({
   role: z.enum(['user', 'assistant']),
@@ -12,7 +12,7 @@ const chatSchema = z.object({
   language: z.string().trim().max(16).optional().default('en'),
   userName: z.string().trim().max(80).optional().default(''),
   sceneSummary: z.string().trim().max(2000).optional().default(''),
-  imageBase64: z.string().max(6_000_000).optional().default(''),
+  imageBase64: z.string().max(400_000).optional().default(''),
   history: z.array(historyItem).max(6).optional().default([]),
 });
 
@@ -37,6 +37,38 @@ async function postChat(req, res, next) {
     });
   } catch (error) {
     next(error);
+  }
+}
+
+async function postChatStream(req, res, next) {
+  try {
+    const payload = chatSchema.parse(req.body);
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    if (typeof res.flushHeaders === 'function') {
+      res.flushHeaders();
+    }
+
+    for await (const text of chatStream(payload)) {
+      res.write(`data: ${JSON.stringify({ text, done: false })}\n\n`);
+      if (typeof res.flush === 'function') {
+        res.flush();
+      }
+    }
+    res.write(`data: ${JSON.stringify({ text: '', done: true })}\n\n`);
+    res.end();
+  } catch (error) {
+    if (!res.headersSent) {
+      next(error);
+      return;
+    }
+    res.write(
+      `data: ${JSON.stringify({ error: error.message || 'stream failed', done: true })}\n\n`,
+    );
+    res.end();
   }
 }
 
@@ -66,6 +98,7 @@ function getStatus(_req, res) {
 
 module.exports = {
   postChat,
+  postChatStream,
   postSpeak,
   getStatus,
 };

@@ -10,6 +10,12 @@ const { corsOrigins, isProduction } = require('./config/env');
 const app = express();
 
 app.set('trust proxy', 1);
+
+// Cold-start ping: no JSON, no logger, no rate limiter.
+app.get('/ping', (_req, res) => {
+  res.sendStatus(200);
+});
+
 app.use(helmet());
 app.use(
   cors({

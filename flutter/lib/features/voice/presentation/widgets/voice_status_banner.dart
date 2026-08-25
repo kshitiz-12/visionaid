@@ -12,18 +12,25 @@ class VoiceStatusBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: isAlert
-            ? Theme.of(context).colorScheme.errorContainer
-            : Theme.of(context).colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(18),
+        color: isAlert ? scheme.errorContainer : scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: isAlert
+              ? scheme.error.withValues(alpha: 0.35)
+              : scheme.outlineVariant.withValues(alpha: 0.6),
+        ),
       ),
-      child: Text(
-        message,
-        style: Theme.of(context).textTheme.bodyLarge,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        child: Text(
+          message,
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                color: isAlert ? scheme.onErrorContainer : scheme.onSurface,
+              ),
+        ),
       ),
     );
   }

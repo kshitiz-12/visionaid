@@ -86,44 +86,44 @@ class _LanguagePageState extends ConsumerState<LanguagePage> {
       appBar: AppBar(title: const Text('Language')),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
                 'Welcome to VisionAid',
-                style: Theme.of(context).textTheme.headlineMedium,
+                style: Theme.of(context).textTheme.headlineLarge,
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               Text(
                 _status,
                 style: Theme.of(context).textTheme.titleLarge,
                 textAlign: TextAlign.center,
               ),
               const Spacer(),
-              FilledButton(
+              FilledButton.icon(
                 onPressed: _busy ? null : _promptAndListen,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(72),
-                ),
-                child: Text(_busy ? 'Listening…' : 'Speak language'),
+                icon: const Icon(Icons.mic),
+                label: Text(_busy ? 'Listening…' : 'Speak language'),
               ),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: _busy ? null : () => _select(AppLanguage.english),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(56),
-                ),
-                child: const Text('English'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton(
-                onPressed: _busy ? null : () => _select(AppLanguage.hindi),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(56),
-                ),
-                child: const Text('Hindi'),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _busy ? null : () => _select(AppLanguage.english),
+                      child: const Text('English'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _busy ? null : () => _select(AppLanguage.hindi),
+                      child: const Text('Hindi'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

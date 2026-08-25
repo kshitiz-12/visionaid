@@ -6,7 +6,7 @@ import 'user_prefs.dart';
 import 'speech_sanitizer.dart';
 
 abstract class TextToSpeechService {
-  Future<void> speak(String text);
+  Future<void> speak(String text, {bool interrupt = true});
   Future<void> stop();
   Future<void> setLocale(String locale);
 }
@@ -48,12 +48,21 @@ class AndroidTextToSpeechService implements TextToSpeechService {
   }
 
   @override
-  Future<void> speak(String text) async {
+  Future<void> speak(String text, {bool interrupt = true}) async {
     if (text.trim().isEmpty) {
       throw StateError('Text to speak cannot be empty');
     }
     await _ensureReady();
-    await stop();
+    if (!interrupt && _speaking != null && !_speaking!.isCompleted) {
+      try {
+        await _speaking!.future.timeout(const Duration(seconds: 45));
+      } on TimeoutException {
+        await _tts.stop();
+      }
+    }
+    if (interrupt) {
+      await stop();
+    }
     final spoken = SpeechSanitizer.clean(text);
     if (spoken.isEmpty) {
       throw StateError('Text to speak cannot be empty');
@@ -61,7 +70,7 @@ class AndroidTextToSpeechService implements TextToSpeechService {
     _speaking = Completer<void>();
     await _tts.speak(spoken);
     try {
-      await _speaking!.future.timeout(const Duration(seconds: 20));
+      await _speaking!.future.timeout(const Duration(seconds: 45));
     } on TimeoutException {
       await _tts.stop();
     }
@@ -84,7 +93,7 @@ class HumanizedTextToSpeechService extends AndroidTextToSpeechService {
 
 class MockTextToSpeechService implements TextToSpeechService {
   @override
-  Future<void> speak(String text) async {
+  Future<void> speak(String text, {bool interrupt = true}) async {
     if (text.isEmpty) {
       throw StateError('Text to speak cannot be empty');
     }

@@ -46,6 +46,11 @@ void main() {
     expect(intent.type, IntentType.quit);
   });
 
+  test('quiet and Hindi close mean quit, not cancel', () async {
+    expect((await engine.classify('quiet')).type, IntentType.quit);
+    expect((await engine.classify('बंद करो')).type, IntentType.quit);
+  });
+
   test('defaults unknown speech to conversation, not vision', () async {
     final intent = await engine.classify('hello there');
     expect(intent.type, IntentType.conversation);
@@ -69,6 +74,29 @@ void main() {
 
     final feeling = await engine.classify('I feel lonely tonight');
     expect(feeling.type, IntentType.conversation);
+  });
+
+  test('emergency and call stay local, not conversation', () async {
+    final emergency = await engine.classify('Emergency');
+    expect(emergency.type, IntentType.emergency);
+
+    final hindiEmergency = await engine.classify('इमरजेंसी');
+    expect(hindiEmergency.type, IntentType.emergency);
+
+    final callMe = await engine.classify('Call me');
+    expect(callMe.type, IntentType.emergency);
+
+    final callKaro = await engine.classify('call karo');
+    expect(callKaro.type, IntentType.emergency);
+
+    final phoneHindi = await engine.classify('कॉल करो');
+    expect(phoneHindi.type, IntentType.emergency);
+  });
+
+  test('named call still goes to that contact', () async {
+    final intent = await engine.classify('Call Harry');
+    expect(intent.type, IntentType.communication);
+    expect(intent.contactName.toLowerCase(), 'harry');
   });
 
   test('stop guiding is cancel', () async {
