@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+
 import '../../../../core/providers/pipeline_providers.dart';
 import '../../../../core/providers/voice_providers.dart';
 import '../../../../core/services/user_prefs.dart';
@@ -24,6 +26,9 @@ import '../../../walking/data/walking_pipeline.dart';
 import '../../data/services/camera_image_converter.dart';
 import '../../data/services/mlkit_object_detector.dart';
 import '../../data/services/scene_labeler.dart';
+import '../../data/services/yolo_gemini_fallback.dart';
+import '../../data/services/yolo_mapper.dart';
+import '../../data/services/yolo_object_detector.dart';
 import '../../domain/services/object_detector_service.dart';
 
 /// On-device walking loop. CameraX ImageAnalysis uses KEEP_ONLY_LATEST;
@@ -50,7 +55,7 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
   final _walk = WalkingPipeline();
   bool _voiceLoop = false;
   final _hazard = HazardCue();
-  final _frames = FrameThrottle();
+  final _frames = FrameThrottle(minIntervalMs: 80);
   MlKitObjectDetector? _guideDetector;
   SceneLabeler? _guideLabeler;
   List<RawDetection> _lastNames = const [];
@@ -58,6 +63,12 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
   late final TwoFingerDown _twoFingers;
   bool _emergencyBusy = false;
   bool _closing = false;
+  bool _wasBlocked = false;
+  int _clearFrames = 0;
+  DateTime? _saidClearAt;
+  bool _useYolo = true;
+  final _yoloCtrl = YOLOViewController();
+  YoloGeminiFallback? _geminiFallback;
 
   @override
   void initState() {
@@ -82,15 +93,16 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
 
   Future<void> _start() async {
     final tts = ref.read(textToSpeechProvider);
+    final lang = AppLanguage.fromCode(await UserPrefs.getLanguageCode());
     _alerts = GuideAlertEngine(
       config: const GuideConfig(),
+      hindi: lang.code.toLowerCase().startsWith('hi'),
     );
     if (widget.findTarget.trim().isNotEmpty) {
       _alerts!.startTargetSearch(widget.findTarget);
     }
     _queue ??= VoiceAnnouncementQueue(tts);
-    _guideDetector ??= MlKitObjectDetector(stream: true);
-    _guideLabeler ??= SceneLabeler();
+    _geminiFallback ??= YoloGeminiFallback(ref.read(companionClientProvider));
     await _walk.warmup();
 
     final status = await Permission.camera.request();
@@ -104,89 +116,225 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
       return;
     }
 
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) {
-      setState(() {
-        _starting = false;
-        _status = 'No camera found.';
-        _alert = true;
-      });
-      await tts.speak(_status);
+    _streaming = true;
+    unawaited(_yoloCtrl.setShowOverlays(false));
+    setState(() {
+      _starting = false;
+      _status = lang.code.toLowerCase().startsWith('hi')
+          ? 'आगे देखें.'
+          : 'Look ahead.';
+    });
+    unawaited(tts.speak(_status));
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    if (_streaming && mounted) {
+      _armStopPhrase();
+    }
+  }
+
+  void _onYolo(List<YOLOResult> results) {
+    if (!_streaming || _closing || !_useYolo) {
       return;
     }
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_frames.shouldSkip(busy: _busyFrame, nowMs: now)) {
+      return;
+    }
+    _busyFrame = true;
+    unawaited(() async {
+      try {
+        await _ingestWalk(YoloMapper.toRaw(results), fromYolo: true);
+      } finally {
+        _busyFrame = false;
+      }
+    }());
+  }
 
+  Future<void> _onYoloReady(String path, YOLOTask? task) async {
+    await _yoloCtrl.setShowOverlays(false);
+    await _yoloCtrl.setConfidenceThreshold(0.25);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _status = _alerts?.hindi == true
+          ? 'आगे देखें. धीरे चलें.'
+          : 'Look ahead. Walk slowly.';
+    });
+  }
+
+  Future<void> _onYoloError(Object error, String path, YOLOTask? task) async {
+    if (!_useYolo) {
+      return;
+    }
+    _useYolo = false;
+    if (mounted) {
+      setState(() {
+        _status = _alerts?.hindi == true
+            ? 'YOLO नहीं चला. पुराना कैमरा इस्तेमाल हो रहा है.'
+            : 'YOLO failed. Using the backup camera.';
+      });
+    }
+    // Release YOLO's CameraX session before opening Flutter camera.
+    await _yoloCtrl.stop();
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    if (!_streaming || !mounted) {
+      return;
+    }
+    await _startMlKitCamera();
+  }
+
+  Future<void> _startMlKitCamera() async {
+    _guideDetector ??= MlKitObjectDetector(stream: true);
+    _guideLabeler ??= SceneLabeler();
+    final cameras = await availableCameras();
+    if (cameras.isEmpty || !mounted) {
+      return;
+    }
     final back = cameras.firstWhere(
       (c) => c.lensDirection == CameraLensDirection.back,
       orElse: () => cameras.first,
     );
-
     CameraController? controller;
-    for (final preset in [
-      ResolutionPreset.medium,
-      ResolutionPreset.low,
-      ResolutionPreset.high,
-    ]) {
-      try {
-        await controller?.dispose();
-        controller = CameraController(
-          back,
-          preset,
-          enableAudio: false,
-          imageFormatGroup: ImageFormatGroup.nv21,
-        );
-        await controller.initialize();
-        break;
-      } catch (_) {
-        try {
-          await controller?.dispose();
-          controller = CameraController(
-            back,
-            preset,
-            enableAudio: false,
-          );
-          await controller.initialize();
-          break;
-        } catch (_) {
-          controller = null;
-        }
-      }
-    }
-
-    if (controller == null || !controller.value.isInitialized) {
-      setState(() {
-        _starting = false;
-        _status = 'Camera failed to start. Try again.';
-        _alert = true;
-      });
-      await tts.speak(_status);
+    try {
+      controller = CameraController(
+        back,
+        ResolutionPreset.medium,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.nv21,
+      );
+      await controller.initialize();
+    } catch (_) {
+      await controller?.dispose();
       return;
     }
-
-    try {
-      if (!mounted) {
-        await controller.dispose();
-        return;
-      }
-      _controller = controller;
-      setState(() {
-        _starting = false;
-        _status = 'Live. Point ahead. Two taps go home. Three taps emergency. Two fingers down to close.';
-      });
-      await tts.speak(_status);
-      await controller.startImageStream(_onFrame);
-      _streaming = true;
-      await Future<void>.delayed(const Duration(milliseconds: 1200));
-      if (_streaming && mounted) {
-        _armStopPhrase();
-      }
-    } catch (_) {
-      setState(() {
-        _starting = false;
-        _status = 'Camera failed to start. Try again.';
-        _alert = true;
-      });
-      await tts.speak(_status);
+    if (!mounted) {
+      await controller.dispose();
+      return;
     }
+    _controller = controller;
+    setState(() {});
+    await controller.startImageStream(_onFrame);
+  }
+
+  Future<void> _ingestWalk(
+    List<RawDetection> objects, {
+    required bool fromYolo,
+  }) async {
+    if (!_streaming || _alerts == null) {
+      return;
+    }
+    final latency = WalkingLatency()
+      ..frameCapturedMs = DateTime.now().millisecondsSinceEpoch
+      ..inferenceCompletedMs = DateTime.now().millisecondsSinceEpoch;
+    final tick = _walk.tick(raw: objects, latency: latency);
+    final pathMetres = tick.snapshots
+        .where((s) {
+          final x = s.centerX ?? 0.5;
+          return x >= 0.35 && x <= 0.65;
+        })
+        .map((s) => s.distanceMeters)
+        .whereType<double>();
+    await _hazard.pingIfWithinMetre(
+      tick.occupancy.blocked
+          ? tick.occupancy.closestMetres
+          : (pathMetres.isEmpty
+              ? null
+              : pathMetres.reduce((a, b) => a < b ? a : b)),
+    );
+    if (fromYolo) {
+      unawaited(_maybeGemini(objects));
+    }
+    // Decision + speech must not block the next YOLO/ML Kit frame.
+    final mode = widget.findTarget.trim().isEmpty
+        ? GuideMode.liveGuide
+        : GuideMode.targetSearch;
+    final result = _alerts!.evaluateSnapshots(
+      snapshots: tick.snapshots,
+      mode: mode,
+      findTarget: widget.findTarget,
+    );
+
+    if (tick.occupancy.blocked) {
+      _wasBlocked = true;
+      _clearFrames = 0;
+    } else if (_wasBlocked &&
+        result.announcements.isEmpty &&
+        !(_queue?.isPlaying ?? false)) {
+      _clearFrames += 1;
+      final now = DateTime.now();
+      final due = _saidClearAt == null ||
+          now.difference(_saidClearAt!) > const Duration(seconds: 10);
+      // Need a few clear frames so flicker does not say "Path clear."
+      if (due && _clearFrames >= 4) {
+        _wasBlocked = false;
+        _clearFrames = 0;
+        _saidClearAt = now;
+        final clear = _alerts?.hindi == true ? 'रास्ता साफ़.' : 'Path clear.';
+        if (mounted) {
+          setState(() {
+            _status = clear;
+            _alert = false;
+          });
+        }
+        unawaited(
+          _queue?.submit(
+            GuideAnnouncement(
+              spoken: clear,
+              decision: AnnouncementDecision.announce,
+              band: PriorityBand.announce,
+              priorityScore: 1,
+              trackKey: 'path-clear',
+              label: 'path',
+              speechPriority: SpeechPriority.low,
+            ),
+          ),
+        );
+      }
+    } else {
+      _clearFrames = 0;
+    }
+
+    if (result.announcements.isEmpty) {
+      return;
+    }
+    final alert = result.announcements.first;
+    if (mounted) {
+      setState(() {
+        _status = alert.spoken;
+        _alert = alert.safetyOverride ||
+            alert.band == PriorityBand.critical ||
+            alert.band == PriorityBand.highPriority;
+      });
+    }
+    unawaited(_queue?.submit(alert));
+  }
+
+  Future<void> _maybeGemini(List<RawDetection> objects) async {
+    final fb = _geminiFallback;
+    if (fb == null || !fb.shouldTrigger(objects)) {
+      return;
+    }
+    final jpeg = await _yoloCtrl.capturePhoto(withOverlays: false);
+    if (jpeg == null || jpeg.isEmpty) {
+      return;
+    }
+    final line = await fb.identify(jpeg: jpeg, detections: objects);
+    if (line == null || line.isEmpty || !_streaming || !mounted) {
+      return;
+    }
+    unawaited(
+      _queue?.submit(
+        GuideAnnouncement(
+          spoken: line,
+          decision: AnnouncementDecision.announce,
+          band: PriorityBand.announce,
+          priorityScore: 2,
+          trackKey: 'gemini-fallback',
+          label: 'scene',
+          speechPriority: SpeechPriority.low,
+        ),
+      ),
+    );
   }
 
   void _armStopPhrase() {
@@ -261,45 +409,7 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
       if (!mounted) {
         return;
       }
-
-      final tick = _walk.tick(raw: objects, latency: latency);
-      await _hazard.pingIfWithinMetre(
-        tick.occupancy.closestMetres ??
-            (tick.snapshots.isEmpty
-                ? null
-                : tick.snapshots
-                    .map((s) => s.distanceMeters)
-                    .whereType<double>()
-                    .fold<double?>(
-                      null,
-                      (best, m) => best == null || m < best ? m : best,
-                    )),
-      );
-      final mode = widget.findTarget.trim().isEmpty
-          ? GuideMode.liveGuide
-          : GuideMode.targetSearch;
-      final result = _alerts!.evaluateSnapshots(
-        snapshots: tick.snapshots,
-        mode: mode,
-        findTarget: widget.findTarget,
-      );
-      tick.latency.decisionCompletedMs = DateTime.now().millisecondsSinceEpoch;
-
-      if (result.announcements.isEmpty) {
-        return;
-      }
-
-      final alert = result.announcements.first;
-      tick.latency.ttsTriggeredMs = DateTime.now().millisecondsSinceEpoch;
-      if (mounted) {
-        setState(() {
-          _status = alert.spoken;
-          _alert = alert.safetyOverride ||
-              alert.band == PriorityBand.critical ||
-              alert.band == PriorityBand.highPriority;
-        });
-      }
-      await _queue?.submit(alert);
+      await _ingestWalk(objects, fromYolo: false);
     } catch (_) {
       if (mounted) {
         setState(() {
@@ -361,6 +471,7 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
       }
       await controller.dispose();
     }
+    await _yoloCtrl.stop();
     await _queue?.stop();
     await ref.read(textToSpeechProvider).stop();
     await _releaseGuideMl();
@@ -385,6 +496,8 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
     if (controller != null) {
       controller.dispose();
     }
+    unawaited(_yoloCtrl.stop());
+    unawaited(_queue?.stop());
     unawaited(_releaseGuideMl());
     super.dispose();
   }
@@ -415,9 +528,30 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
                 Expanded(
                   child: ClipRRect(
                     borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
-                    child: _starting || preview == null || !preview.value.isInitialized
+                    child: _starting
                         ? const Center(child: CircularProgressIndicator())
-                        : CameraPreview(preview),
+                        : _useYolo
+                            ? YOLOView(
+                                modelPath: YoloObjectDetector.modelId(),
+                                task: YOLOTask.detect,
+                                controller: _yoloCtrl,
+                                confidenceThreshold: 0.25,
+                                useGpu: true,
+                                streamingConfig: const YOLOStreamingConfig(
+                                  maxFPS: 12,
+                                  inferenceFrequency: 12,
+                                  includeMasks: false,
+                                  includePoses: false,
+                                  includeOBB: false,
+                                  includeOriginalImage: false,
+                                ),
+                                onResult: _onYolo,
+                                onModelLoad: _onYoloReady,
+                                onModelError: _onYoloError,
+                              )
+                            : (preview == null || !preview.value.isInitialized
+                                ? const Center(child: CircularProgressIndicator())
+                                : CameraPreview(preview)),
                   ),
                 ),
                 Padding(

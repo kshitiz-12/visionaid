@@ -40,6 +40,11 @@ class CompanionClient {
     });
   }
 
+  void dispose() {
+    _keepAlive?.cancel();
+    _keepAlive = null;
+  }
+
   /// Hits a cheap health route so Render is less likely to stall the first chat.
   Future<bool> wake({Duration timeout = const Duration(seconds: 8)}) async {
     if (_lastWakeOk != null &&
@@ -106,7 +111,8 @@ class CompanionClient {
       history: history,
       imageBase64: imageBase64,
     );
-    await wake(timeout: const Duration(seconds: 12));
+    // Keep-alive already pings; never block the chat request on a second wake.
+    unawaited(wake(timeout: const Duration(seconds: 8)));
     try {
       final request = http.Request(
         'POST',
@@ -119,8 +125,8 @@ class CompanionClient {
       request.body = jsonEncode(body);
       final streamed = await _http.send(request).timeout(
             imageBase64.isNotEmpty
-                ? const Duration(seconds: 28)
-                : const Duration(seconds: 22),
+                ? const Duration(seconds: 26)
+                : const Duration(seconds: 18),
           );
       if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
         return chat(
@@ -138,7 +144,7 @@ class CompanionClient {
       var buffer = '';
       try {
         await for (final chunk in streamed.stream
-            .timeout(const Duration(seconds: 16))
+            .timeout(const Duration(seconds: 14))
             .transform(utf8.decoder)) {
           buffer += chunk;
           final blocks = buffer.split('\n\n');
@@ -191,7 +197,14 @@ class CompanionClient {
       }
       final text = SpeechSanitizer.clean(full.toString());
       if (text.isEmpty) {
-        throw const AppException('Empty assistant reply', code: 'AI_EMPTY');
+        return chat(
+          message: message,
+          language: language,
+          userName: userName,
+          sceneSummary: sceneSummary,
+          history: history,
+          imageBase64: imageBase64,
+        );
       }
       return CompanionReply(text: text, provider: 'gemini', naturalVoice: false);
     } on AppException {
@@ -225,15 +238,15 @@ class CompanionClient {
       if (imageBase64.isNotEmpty) 'imageBase64': imageBase64,
     };
     late http.Response response;
-    await wake(timeout: const Duration(seconds: 12));
+    unawaited(wake(timeout: const Duration(seconds: 8)));
     Future<http.Response> send(Duration timeout) => _postChat(body, timeout);
     final firstTimeout = imageBase64.isNotEmpty
-        ? const Duration(seconds: 28)
-        : const Duration(seconds: 22);
+        ? const Duration(seconds: 26)
+        : const Duration(seconds: 18);
     try {
       response = await send(firstTimeout);
     } on TimeoutException {
-      await wake(timeout: const Duration(seconds: 15));
+      unawaited(wake(timeout: const Duration(seconds: 12)));
       try {
         response = await send(firstTimeout);
       } on TimeoutException {
@@ -246,7 +259,7 @@ class CompanionClient {
       if (error is AppException) {
         rethrow;
       }
-      await wake(timeout: const Duration(seconds: 10));
+      unawaited(wake(timeout: const Duration(seconds: 10)));
       try {
         response = await send(firstTimeout);
       } catch (retryError) {
@@ -308,10 +321,10 @@ class CompanionClient {
             },
             body: jsonEncode({'text': text, 'language': language}),
           )
-          .timeout(const Duration(seconds: 4));
+          .timeout(const Duration(seconds: 8));
 
       if (response.statusCode == 503) {
-        _skipCloudTtsUntil = DateTime.now().add(const Duration(minutes: 5));
+        _skipCloudTtsUntil = DateTime.now().add(const Duration(seconds: 45));
         return null;
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -322,7 +335,7 @@ class CompanionClient {
       }
       return response.bodyBytes;
     } catch (_) {
-      _skipCloudTtsUntil = DateTime.now().add(const Duration(minutes: 3));
+      _skipCloudTtsUntil = DateTime.now().add(const Duration(seconds: 20));
       return null;
     }
   }

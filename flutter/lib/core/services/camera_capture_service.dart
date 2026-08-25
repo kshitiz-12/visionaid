@@ -43,7 +43,7 @@ class CameraCaptureService {
 
     try {
       await controller.initialize();
-      await Future<void>.delayed(const Duration(milliseconds: 280));
+      await Future<void>.delayed(const Duration(milliseconds: 120));
       final file = await controller.takePicture();
       return file.path;
     } on CameraException catch (error) {

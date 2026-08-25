@@ -20,7 +20,7 @@ TalkBack’s double-tap-to-activate can fight this. Turn TalkBack off while test
 | You say / tap | What should happen |
 |---------------|-------------------|
 | Tap **once** anywhere, then ask anything (“What is potato in English?”, “aaloo ko English mein kya kehte hain”, plans, jokes) | Waits for Gemini, then **speaks the full answer**. Working… then the mic comes back. Needs internet + Render. |
-| “What is in front of me?” / “ye kya hai?” | Takes **one photo** and describes it (clock-face). Not the live walking loop. |
+| “What is in front of me?” / “ye kya hai?” | Takes **one photo** and describes it (left / right / ahead). Not the live walking loop. |
 | “Call Harry” | Dials that contact. Not AI. |
 | “Call me” / “Emergency” / tap **Emergency** | Dials the **saved emergency number**. If the call fails, opens SMS with location. |
 | “Text Mom …” / “WhatsApp Harry saying …” | On-phone messaging. |
@@ -32,7 +32,7 @@ TalkBack’s double-tap-to-activate can fight this. Turn TalkBack off while test
 
 Hold the phone **chest-high, camera forward**, walk slowly.
 
-You should hear direction + distance, and a **beep + vibration** if something is within about 1 metre.
+You should hear a **short** line like “Chair, ahead, one metre.” Quiet unless something is in your path. **Path clear** when the way opens. **Beep + vibration** inside about 1 metre.
 
 - Named when it can: chair, bottle, person, table…
 - If it cannot name it: **tall / wide / low / nearby thing** — never a potato from this screen.

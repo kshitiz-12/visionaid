@@ -94,9 +94,14 @@ void main() {
   });
 
   test('named call still goes to that contact', () async {
-    final intent = await engine.classify('Call Harry');
-    expect(intent.type, IntentType.communication);
-    expect(intent.contactName.toLowerCase(), 'harry');
+    for (final phrase in ['Call Harry', 'Call xyz', 'Call abc', 'call karo ramesh']) {
+      final intent = await engine.classify(phrase);
+      expect(intent.type, IntentType.communication, reason: phrase);
+      expect(intent.contactName.toLowerCase(), isNotEmpty, reason: phrase);
+      expect(intent.contactName.toLowerCase(), isNot('emergency'), reason: phrase);
+    }
+    final harry = await engine.classify('Call Harry');
+    expect(harry.contactName.toLowerCase(), 'harry');
   });
 
   test('stop guiding is cancel', () async {

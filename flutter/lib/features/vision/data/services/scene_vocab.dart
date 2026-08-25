@@ -121,7 +121,12 @@ class SceneVocab {
     'rupees': 'money',
     'coin': 'money',
     'dollar bill': 'money',
-    'paper money': 'money',
+    'fan': 'fan',
+    'ceiling fan': 'fan',
+    'bed': 'bed',
+    'refrigerator': 'fridge',
+    'fridge': 'fridge',
+    'microwave': 'microwave',
   };
 
   static String normalize(String raw) {

@@ -12,12 +12,13 @@ class ContactDirectory {
       return ContactLookup(matches: emergency == null ? [] : [emergency]);
     }
 
-    if (emergency != null && ContactMatcher.score(emergency.displayName, query) >= 70) {
-      return ContactLookup(matches: [emergency]);
-    }
-
     final status = await FlutterContacts.permissions.request(PermissionType.read);
     if (status != PermissionStatus.granted && status != PermissionStatus.limited) {
+      final emergencyHit = emergency != null &&
+          ContactMatcher.score(emergency.displayName, query) >= 85;
+      if (emergencyHit) {
+        return ContactLookup(matches: [emergency]);
+      }
       return const ContactLookup(matches: [], permissionDenied: true);
     }
 
@@ -42,8 +43,12 @@ class ContactDirectory {
     }
 
     var matches = ContactMatcher.rank(mapped, query);
-    if (matches.isEmpty && emergency != null && ContactMatcher.score(emergency.displayName, query) >= 50) {
-      matches = [emergency];
+    if (emergency != null &&
+        ContactMatcher.score(emergency.displayName, query) >= 85) {
+      matches = [
+        emergency,
+        ...matches.where((m) => m.phone != emergency.phone),
+      ];
     }
     return ContactLookup(matches: matches);
   }

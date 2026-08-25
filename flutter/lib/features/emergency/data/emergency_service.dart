@@ -20,7 +20,7 @@ class EmergencyService {
       return 'I need contacts permission to find people on this phone.';
     }
     if (lookup.matches.isEmpty) {
-      if (contactName.isNotEmpty) {
+      if (contactName.trim().isNotEmpty) {
         return 'I could not find $contactName in your contacts.';
       }
       return 'No emergency contact saved. Add one in settings.';

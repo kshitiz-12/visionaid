@@ -6,12 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import 'core/config/app_config.dart';
-import 'core/network/companion_client.dart';
+import 'core/providers/pipeline_providers.dart';
 import 'core/router/app_router.dart';
 import 'core/services/supabase_service.dart';
 import 'core/theme/app_theme.dart';
-
-final _keepAliveClient = CompanionClient();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +27,6 @@ Future<void> main() async {
   await AppConfig.load();
   await SupabaseService.initialize();
   await WakelockPlus.enable();
-  _keepAliveClient.startKeepAlive();
 
   runApp(const ProviderScope(child: VisionAidApp()));
 }
@@ -39,6 +36,8 @@ class VisionAidApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Start Render keep-alive as soon as the app mounts.
+    ref.watch(companionClientProvider);
     final router = ref.watch(goRouterProvider);
 
     return MaterialApp.router(

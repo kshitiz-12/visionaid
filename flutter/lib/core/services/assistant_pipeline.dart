@@ -12,6 +12,7 @@ import '../network/companion_client.dart';
 import 'camera_capture_service.dart';
 import 'conversation_memory.dart';
 import 'pipeline_result.dart';
+import 'scene_policy.dart';
 import 'user_prefs.dart';
 
 /// Intent → local actions (call / emergency / OCR / vision) or cloud companion.
@@ -44,7 +45,20 @@ class AssistantPipeline {
   }) async {
     final intent = await intentEngine.classify(spokenText);
 
+    if (ScenePolicy.wantsRepeat(spokenText) && memory.lastReply.isNotEmpty) {
+      return PipelineResult(
+        intent: intent,
+        spokenReply: memory.lastReply,
+      );
+    }
+
     if (!intent.isActionable || intent.type == IntentType.cancel) {
+      if (intent.rawText.trim().isEmpty) {
+        return PipelineResult(
+          intent: intent,
+          spokenReply: "I didn't catch that. Please try again.",
+        );
+      }
       return PipelineResult(
         intent: intent,
         spokenReply: 'Okay, cancelled.',
@@ -126,23 +140,40 @@ class AssistantPipeline {
     try {
       final shot = await camera.captureJpeg();
       final detections = await detector.detect(shot.path);
+      final named = detections
+          .where(
+            (d) =>
+                d.label.isNotEmpty &&
+                d.label != 'obstacle' &&
+                d.label != 'object',
+          )
+          .length;
       List<RawDetection> labels = const [];
-      try {
-        labels = await labeler.label(InputImage.fromFilePath(shot.path));
-      } catch (_) {}
+      // YOLO already names COCO classes — skip slow Image Labeler when confident.
+      if (named < 2) {
+        try {
+          labels = await labeler.label(InputImage.fromFilePath(shot.path));
+        } catch (_) {}
+      }
       final merged = SceneLabeler.merge(detections, labels);
       final maps = merged.map((d) => d.toMap()).toList();
       final decision = contextEngine.evaluate(
         detections: maps,
         intentTarget: intent.target,
       );
-      final names = maps
-          .map((m) => m['label'] as String? ?? '')
-          .where((l) => l.isNotEmpty)
-          .take(6)
-          .join(', ');
-      final facts =
-          '${decision.spokenMessage}. Detected: ${names.isEmpty ? 'none' : names}.';
+      final bits = <String>[];
+      for (final d in merged.take(5)) {
+        if (d.label.isEmpty) {
+          continue;
+        }
+        bits.add('${d.label} ${_sideOf(d)}');
+      }
+      var facts = bits.isEmpty
+          ? 'On-device did not name anything. Trust the photo.'
+          : 'On-device names: ${bits.join('; ')}. Trust the photo more.';
+      if (decision.reason == 'hazard') {
+        facts = '${decision.spokenMessage} $facts';
+      }
       memory.rememberScene(facts);
       return (facts: facts, imageBase64: shot.imageBase64);
     } catch (_) {
@@ -150,23 +181,21 @@ class AssistantPipeline {
     }
   }
 
-  bool _needsFreshScene(UserIntent intent) {
-    if (intent.type == IntentType.sceneDescribe ||
-        intent.type == IntentType.findObject ||
-        intent.type == IntentType.navigation ||
-        intent.type == IntentType.readText) {
-      return true;
+  String _sideOf(RawDetection d) {
+    if (d.frameWidth <= 0 || d.boxWidth <= 0) {
+      return 'ahead';
     }
-    if (intent.type != IntentType.conversation &&
-        intent.type != IntentType.help &&
-        intent.type != IntentType.unknown) {
-      return false;
+    final cx = (d.boxLeft + d.boxWidth / 2) / d.frameWidth;
+    if (cx < 0.38) {
+      return 'left';
     }
-    final t = intent.rawText.toLowerCase();
-    return RegExp(
-      r'\b(this|that|here|front|ahead|table|room|see|look|around|photo|bottle|chair|what is that|ye kya|dikhai|samne)\b',
-    ).hasMatch(t);
+    if (cx > 0.62) {
+      return 'right';
+    }
+    return 'ahead';
   }
+
+  bool _needsFreshScene(UserIntent intent) => ScenePolicy.wantsCamera(intent);
 
   Future<PipelineResult> _chat(
     UserIntent intent, {
@@ -178,9 +207,12 @@ class AssistantPipeline {
       final snap = await _captureScene(intent);
       scene = snap.facts;
       imageBase64 = snap.imageBase64;
+    } else if (ScenePolicy.wantsRepeat(intent.rawText)) {
+      scene = memory.lastScene;
     }
 
-    final language = AppLanguage.fromCode(await UserPrefs.getLanguageCode());
+    final languageCode = await UserPrefs.getLanguageCode();
+    final language = AppLanguage.fromCode(languageCode);
     final name = await UserPrefs.getName();
 
     try {
@@ -203,7 +235,8 @@ class AssistantPipeline {
     } on AppException catch (error) {
       if (error.code == 'AI_NOT_CONFIGURED' ||
           error.code == 'NETWORK_ERROR' ||
-          error.code == 'AI_UPSTREAM') {
+          error.code == 'AI_UPSTREAM' ||
+          error.code == 'AI_EMPTY') {
         return PipelineResult(
           intent: intent,
           spokenReply: language.code == 'hi'

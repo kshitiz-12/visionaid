@@ -6,7 +6,6 @@ class VoiceAnnouncementQueue {
 
   final TextToSpeechService _tts;
   bool _playing = false;
-  GuideAnnouncement? _pending;
 
   bool get isPlaying => _playing;
 
@@ -14,12 +13,7 @@ class VoiceAnnouncementQueue {
     if (_playing) {
       if (next.safetyOverride || next.speechPriority == SpeechPriority.critical) {
         await _tts.stop();
-        _pending = null;
       } else {
-        final pending = _pending;
-        if (pending == null || _rank(next) > _rank(pending)) {
-          _pending = next;
-        }
         return;
       }
     }
@@ -32,21 +26,7 @@ class VoiceAnnouncementQueue {
       await _tts.speak(item.spoken);
     } finally {
       _playing = false;
-      final pending = _pending;
-      _pending = null;
-      if (pending != null) {
-        await submit(pending);
-      }
     }
-  }
-
-  int _rank(GuideAnnouncement a) {
-    return switch (a.speechPriority) {
-      SpeechPriority.critical => 4,
-      SpeechPriority.high => 3,
-      SpeechPriority.medium => 2,
-      SpeechPriority.low => 1,
-    };
   }
 
   Future<void> stop() => _tts.stop();

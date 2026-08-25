@@ -81,9 +81,9 @@ const env = {
   geminiApiKey: (raw.GEMINI_API_KEY || '').trim(),
   openaiApiKey: (raw.OPENAI_API_KEY || '').trim(),
   openaiModel: raw.OPENAI_MODEL || 'gpt-4o-mini',
-  openaiTtsModel: raw.OPENAI_TTS_MODEL || 'tts-1-hd',
-  openaiTtsVoice: raw.OPENAI_TTS_VOICE || 'nova',
-  geminiModel: (raw.GEMINI_MODEL || 'gemini-3.6-flash').trim() || 'gemini-3.6-flash',
+  openaiTtsModel: raw.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
+  openaiTtsVoice: raw.OPENAI_TTS_VOICE || 'coral',
+  geminiModel: (raw.GEMINI_MODEL || 'gemini-2.5-flash').trim() || 'gemini-2.5-flash',
 };
 
 module.exports = env;

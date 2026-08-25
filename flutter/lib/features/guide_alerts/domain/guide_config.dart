@@ -3,8 +3,8 @@ class GuideConfig {
   const GuideConfig({
     this.minimumConfidence = 0.38,
     this.veryLowConfidence = 0.22,
-    this.requiredConfirmationFrames = 1,
-    this.safetyConfirmationFrames = 1,
+    this.requiredConfirmationFrames = 2,
+    this.safetyConfirmationFrames = 2,
     this.neutralDistanceScore = 0.30,
     this.corridorLeft = 0.35,
     this.corridorRight = 0.65,
@@ -28,7 +28,8 @@ class GuideConfig {
     this.targetMinConfidence = 0.70,
     this.targetWindowFrames = 4,
     this.targetSearchTimeout = const Duration(seconds: 12),
-    this.announcementCooldown = const Duration(seconds: 4),
+    this.announcementCooldown = const Duration(seconds: 8),
+    this.minGapBetweenSpeech = const Duration(milliseconds: 2800),
     this.debugMode = false,
     this.researchLog = false,
     this.objectRisk = const {
@@ -92,6 +93,7 @@ class GuideConfig {
   final int targetWindowFrames;
   final Duration targetSearchTimeout;
   final Duration announcementCooldown;
+  final Duration minGapBetweenSpeech;
   final bool debugMode;
   final bool researchLog;
   final Map<String, double> objectRisk;

@@ -1,18 +1,22 @@
 const env = require('../config/env');
 const { AppError } = require('../utils/appError');
 
-const SYSTEM_PROMPT = `You are VisionAid, a trusted friend walking beside a person who is blind or has low vision.
+const SYSTEM_PROMPT = `You are VisionAid, a calm friend beside someone who is blind or has low vision. Sound like a person, not a detector.
 
-Two jobs:
-1) Conversation: they may ask about ANYTHING — feelings, plans, knowledge, maths, jokes. Answer that. Do not drag every reply to the camera.
-2) Seeing: if a PHOTO is attached, you are the eyes. Name real things. Place them with clock-face directions (12 o'clock is straight ahead, 3 o'clock is right, 9 o'clock is left). Say approximate distance as "very close", "about one metre", or "about two metres". Example: "Water bottle at your 2 o'clock, about one metre away on the table." Never invent objects.
+Decide the job from THIS turn:
+- Knowledge, feelings, plans, maths, jokes, translation: answer that. Do not mention the camera or walking unless they asked.
+- Seeing: only if a PHOTO is attached this turn. Name real things. Place them with left, slight left, ahead, slight right, or right. Distance: close, about one metre, or about two metres. Never invent objects. One or two spoken sentences unless they asked for more detail.
+- Follow-up: use chat history. If they say "that" or "it", they mean the last thing you described.
 
-Speak their language. Give a complete spoken answer of 2 to 5 sentences. Finish every sentence with a period.
-Never start with their name. Do not greet. Answer the question first.
-If they ask what a Hindi word is in English (for example aalu), say the English word clearly, like: "Aalu is called potato in English."
-If they asked about food, a word, or knowledge, answer that fully. Do not mention walking, obstacles, or Stop unless the photo shows a real hazard.
-Output plain speech only. No Markdown, no asterisks, no hashtags, no bullet lists, no headings.
-Never say you are Gemini or ChatGPT. You cannot place calls. If they need a phone call, tell them to say Call or Emergency.`;
+Language:
+- English replies: clear English. Finish every sentence with a period.
+- Hindi replies: 100 percent Devanagari script only. Example: आलू, not Aalu. Use । at the end of sentences. Never mix Latin letters into Hindi words.
+If they ask what a Hindi word is in English, still write the Hindi word in Devanagari, then the English word. Example: "आलू is called potato in English."
+
+Output plain speech only. No Markdown, no asterisks, no hashtags, no bullet lists, no headings, no code.
+Keep it short for voice: usually one to three spoken sentences. Lead with the answer.
+Never start with their name. Do not greet. Answer first.
+Never say you are Gemini or ChatGPT. You cannot place calls. For a phone call, tell them to say Call or Emergency.`;
 
 function hasAnyKey() {
   return Boolean(env.openaiApiKey || env.geminiApiKey);
@@ -38,18 +42,31 @@ function stripDataUrl(raw) {
   return s.replace(/\s/g, '');
 }
 
-function buildUserPayload({ message, language, userName, sceneSummary, history }) {
+function buildUserPayload({ message, language, userName, sceneSummary, history, imageBase64 }) {
   const lines = [];
   lines.push(`User language: ${languageName(language)}. Reply only in that language.`);
-  if (userName) {
-    lines.push('Do not say their name. Answer directly.');
+  if (String(language || '').toLowerCase().startsWith('hi')) {
+    lines.push('Hindi must be Devanagari only. Do not transliterate.');
   }
-  if (sceneSummary) {
-    lines.push(`On-device guesses (may be wrong; trust the photo more):\n${sceneSummary}`);
+  if (userName) {
+    lines.push(`Their name is ${userName}. Do not start with it.`);
+  }
+  const hasPhoto = Boolean(stripDataUrl(imageBase64));
+  if (hasPhoto) {
+    lines.push('A photo is attached. You are their eyes for this turn.');
+    if (sceneSummary) {
+      lines.push(`On-device guesses (may be wrong; trust the photo):\n${sceneSummary}`);
+    }
+  } else if (sceneSummary) {
+    lines.push(
+      `No new photo. Scene memory from earlier (do not invent new objects):\n${sceneSummary}`,
+    );
+  } else {
+    lines.push('No photo this turn. Answer from knowledge and the conversation.');
   }
   if (Array.isArray(history) && history.length > 0) {
     lines.push('Recent conversation:');
-    for (const turn of history.slice(-4)) {
+    for (const turn of history.slice(-6)) {
       const role = turn.role === 'assistant' ? 'VisionAid' : 'User';
       const text = String(turn.content || '').slice(0, 500);
       if (text) {
@@ -81,7 +98,7 @@ async function chatOpenAi(userContent, imageBase64) {
     body: JSON.stringify({
       model: env.openaiModel,
       temperature: 0.7,
-      max_tokens: 220,
+      max_tokens: 360,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userParts },
@@ -106,11 +123,23 @@ async function chatOpenAi(userContent, imageBase64) {
 }
 
 function extractGeminiText(body) {
-  const parts = body.candidates?.[0]?.content?.parts || [];
-  return parts
-    .map((part) => (typeof part.text === 'string' ? part.text : ''))
-    .join('')
-    .trim();
+  const candidates = Array.isArray(body?.candidates) ? body.candidates : [];
+  const chunks = [];
+  for (const candidate of candidates) {
+    if (typeof candidate?.text === 'string') {
+      chunks.push(candidate.text);
+    }
+    const parts = candidate?.content?.parts || [];
+    for (const part of parts) {
+      if (part?.thought) {
+        continue;
+      }
+      if (typeof part?.text === 'string' && part.text.trim()) {
+        chunks.push(part.text);
+      }
+    }
+  }
+  return chunks.join('').trim();
 }
 
 function stripMarkup(text) {
@@ -124,7 +153,19 @@ function stripMarkup(text) {
     .trim();
 }
 
-function geminiPayload(userContent, imageBase64) {
+function geminiModels() {
+  const preferred = (env.geminiModel || '').trim();
+  // Prefer Flash models; try the fastest known Flash first after preferred.
+  const fallbacks = [
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-flash-latest',
+    'gemini-1.5-flash',
+  ];
+  return [...new Set([preferred, ...fallbacks].filter(Boolean))];
+}
+
+function geminiPayload(userContent, imageBase64, { disableThinking = true } = {}) {
   const parts = [{ text: userContent }];
   if (imageBase64) {
     parts.push({
@@ -134,27 +175,30 @@ function geminiPayload(userContent, imageBase64) {
       },
     });
   }
+  const generationConfig = {
+    temperature: 0.55,
+    maxOutputTokens: 320,
+  };
+  if (disableThinking) {
+    generationConfig.thinkingConfig = { thinkingBudget: 0 };
+  }
   return {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [{ role: 'user', parts }],
-    generationConfig: {
-      temperature: 0.6,
-      maxOutputTokens: 512,
-    },
+    generationConfig,
   };
 }
 
-function geminiUrl(method) {
-  const model = 'gemini-3.6-flash';
+function geminiUrl(method, model) {
   return (
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:${method}` +
     `?key=${encodeURIComponent(env.geminiApiKey)}`
   );
 }
 
-async function chatGemini(userContent, imageBase64) {
-  const payload = geminiPayload(userContent, imageBase64);
-  const response = await fetch(geminiUrl('generateContent'), {
+async function generateGemini(userContent, imageBase64, model, options) {
+  const payload = geminiPayload(userContent, imageBase64, options);
+  const response = await fetch(geminiUrl('generateContent', model), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -162,11 +206,12 @@ async function chatGemini(userContent, imageBase64) {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
     const lastDetail = body.error?.message || `Gemini failed (${response.status})`;
-    console.error('[companion] gemini:', lastDetail);
     throw new AppError(lastDetail, { statusCode: 502, code: 'AI_UPSTREAM' });
   }
+  const finish = body.candidates?.[0]?.finishReason;
   const text = stripMarkup(extractGeminiText(body));
   if (!text) {
+    console.error('[companion] gemini empty', model, finish || 'no-finish');
     throw new AppError('The assistant returned an empty reply', {
       statusCode: 502,
       code: 'AI_EMPTY',
@@ -175,9 +220,35 @@ async function chatGemini(userContent, imageBase64) {
   return { text, provider: 'gemini' };
 }
 
-async function* streamGemini(userContent, imageBase64) {
-  const payload = geminiPayload(userContent, imageBase64);
-  const url = `${geminiUrl('streamGenerateContent')}&alt=sse`;
+async function chatGeminiWithModel(userContent, imageBase64, model) {
+  try {
+    return await generateGemini(userContent, imageBase64, model, { disableThinking: true });
+  } catch (error) {
+    const detail = String(error?.message || error || '');
+    // Only retry with thinking if the API rejected the thinkingConfig itself.
+    if (/thinking|budget|Unknown name|INVALID_ARGUMENT/i.test(detail)) {
+      return generateGemini(userContent, imageBase64, model, { disableThinking: false });
+    }
+    throw error;
+  }
+}
+
+async function chatGemini(userContent, imageBase64) {
+  let lastError;
+  for (const model of geminiModels()) {
+    try {
+      return await chatGeminiWithModel(userContent, imageBase64, model);
+    } catch (error) {
+      lastError = error;
+      console.error('[companion] gemini:', model, error.message);
+    }
+  }
+  throw lastError || new AppError('Gemini failed', { statusCode: 502, code: 'AI_UPSTREAM' });
+}
+
+async function* streamGemini(userContent, imageBase64, model) {
+  const payload = geminiPayload(userContent, imageBase64, { disableThinking: true });
+  const url = `${geminiUrl('streamGenerateContent', model)}&alt=sse`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -227,8 +298,9 @@ async function* streamGemini(userContent, imageBase64) {
       } else {
         emitted += piece;
       }
-      if (delta) {
-        yield delta;
+      const cleaned = stripMarkup(delta);
+      if (cleaned) {
+        yield cleaned;
       }
     }
   }
@@ -244,14 +316,34 @@ async function* chatStream(input) {
   const userContent = buildUserPayload(input);
   const imageBase64 = stripDataUrl(input.imageBase64);
   if (env.geminiApiKey) {
+    let lastError;
+    for (const model of geminiModels()) {
+      try {
+        let gotText = false;
+        for await (const piece of streamGemini(userContent, imageBase64, model)) {
+          if (piece) {
+            gotText = true;
+            yield piece;
+          }
+        }
+        if (gotText) {
+          return;
+        }
+        lastError = new AppError('The assistant returned an empty reply', {
+          statusCode: 502,
+          code: 'AI_EMPTY',
+        });
+      } catch (error) {
+        lastError = error;
+        console.error('[companion] stream:', model, error.message);
+      }
+    }
     try {
-      yield* streamGemini(userContent, imageBase64);
-      return;
-    } catch (error) {
-      console.error('[companion] stream fallback:', error.message);
       const full = await chatGemini(userContent, imageBase64);
       yield full.text;
       return;
+    } catch (error) {
+      throw lastError || error;
     }
   }
   const reply = await chatOpenAi(userContent, imageBase64);
@@ -282,6 +374,26 @@ async function chat(input) {
   );
 }
 
+async function requestSpeech(model, voice, input, instructions) {
+  const payload = {
+    model,
+    voice,
+    input,
+    response_format: 'mp3',
+  };
+  if (String(model).includes('gpt-4o')) {
+    payload.instructions = instructions;
+  }
+  return fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.openaiApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
 async function speak({ text, language }) {
   if (!env.openaiApiKey) {
     throw new AppError('Natural voice needs OPENAI_API_KEY on the server.', {
@@ -295,38 +407,29 @@ async function speak({ text, language }) {
     throw new AppError('Nothing to speak', { statusCode: 400, code: 'VALIDATION_ERROR' });
   }
 
-  const instructions = String(language || '').toLowerCase().startsWith('hi')
-    ? 'Speak warm, clear Hindi. Unhurried. Like a trusted person walking beside them.'
-    : 'Speak warm, clear conversational English. Unhurried. Like a trusted person walking beside them.';
+  const hindi = String(language || '').toLowerCase().startsWith('hi');
+  const instructions = hindi
+    ? 'Voice: warm, clear, unhurried Hindi. Like ChatGPT Advanced Voice. Speak as a trusted person beside someone who cannot see. No announcer tone.'
+    : 'Voice: warm, clear, unhurried conversational English. Like ChatGPT Advanced Voice. Speak as a trusted person beside someone who cannot see. No announcer tone.';
 
-  const payload = {
-    model: env.openaiTtsModel,
-    voice: env.openaiTtsVoice,
-    input: clipped,
-  };
-  if (env.openaiTtsModel.includes('gpt-4o')) {
-    payload.instructions = instructions;
+  const preferred = env.openaiTtsModel || 'gpt-4o-mini-tts';
+  const preferredVoice = env.openaiTtsVoice || 'coral';
+  const models = [...new Set([preferred, 'gpt-4o-mini-tts', 'tts-1-hd'])];
+  const tts1Voices = new Set(['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer']);
+
+  let lastDetail = 'OpenAI TTS failed';
+  for (const model of models) {
+    const voice = String(model).includes('gpt-4o')
+      ? preferredVoice
+      : (tts1Voices.has(preferredVoice) ? preferredVoice : 'nova');
+    const response = await requestSpeech(model, voice, clipped, instructions);
+    if (response.ok) {
+      return Buffer.from(await response.arrayBuffer());
+    }
+    lastDetail = (await response.text()).slice(0, 300) || `OpenAI TTS failed (${response.status})`;
+    console.error('[companion] tts', model, lastDetail);
   }
-
-  const response = await fetch('https://api.openai.com/v1/audio/speech', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.openaiApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const errBody = await response.text();
-    throw new AppError(errBody.slice(0, 300) || `OpenAI TTS failed (${response.status})`, {
-      statusCode: 502,
-      code: 'TTS_UPSTREAM',
-    });
-  }
-
-  const buffer = Buffer.from(await response.arrayBuffer());
-  return buffer;
+  throw new AppError(lastDetail, { statusCode: 502, code: 'TTS_UPSTREAM' });
 }
 
 module.exports = {

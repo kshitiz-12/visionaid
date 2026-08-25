@@ -95,13 +95,14 @@ class WalkingTracker {
         match.boxTop = top;
         match.boxRight = right;
         match.boxBottom = bottom;
+        final previousX = match.centerX;
         match.centerX = cx;
         match.distanceMetres = metres;
         match.direction = _dir(cx);
         match.movement = _movement(
           previousMetres: match.previousMetres,
           metres: metres,
-          previousX: match.centerX,
+          previousX: previousX,
           centerX: cx,
         );
         match.lastSeen = now;

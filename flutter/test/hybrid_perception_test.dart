@@ -57,4 +57,18 @@ void main() {
     expect(buf.add('on the table. Extra'), ['It is on the table.']);
     expect(buf.flush(), 'Extra');
   });
+
+  test('sentence buffer does not chunk by word count', () {
+    final buf = SentenceBuffer();
+    final long =
+        'This is a long clause without a period that should stay buffered until a real stop';
+    expect(buf.add(long), isEmpty);
+    expect(buf.flush(), long);
+  });
+
+  test('Hindi danda ends a sentence', () {
+    final buf = SentenceBuffer();
+    expect(buf.add('आलू आलू है।और'), ['आलू आलू है।']);
+    expect(buf.flush(), 'और');
+  });
 }

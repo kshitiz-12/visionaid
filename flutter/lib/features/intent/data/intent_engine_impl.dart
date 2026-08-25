@@ -188,14 +188,31 @@ class IntentEngineImpl implements IntentEngine {
   }
 
   bool _meansEmergencyContact(String lower, String contactName) {
+    if (RegExp(r'\b(whatsapp|message|text|sms|मैसेज|व्हाट्सऐप)\b').hasMatch(lower)) {
+      return false;
+    }
+    if (RegExp(
+      r'\b(call\s*me|dial\s*me|phone\s*me|emergency|sos|call\s*(for\s*)?help)\b',
+    ).hasMatch(lower)) {
+      return true;
+    }
     final name = contactName.trim().toLowerCase();
-    if (name.isEmpty ||
-        name == 'me' ||
+    if (name == 'me' ||
         name == 'myself' ||
         name == 'emergency' ||
-        name == 'contact' ||
         name.contains('emergency')) {
-      return !RegExp(r'\b(whatsapp|message|text|sms|मैसेज|व्हाट्सऐप)\b').hasMatch(lower);
+      return true;
+    }
+    // Bare "call" / "call karo" / "कॉल करो" with no person — not "call Ramesh".
+    final bare = lower
+        .replaceAll(RegExp(r'[?.!,]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (name.isEmpty &&
+        RegExp(
+          r'^(call|dial|phone|कॉल)(\s+(karo|kar|lagao|laga|please|करो|लगाओ))?$',
+        ).hasMatch(bare)) {
+      return true;
     }
     return false;
   }
@@ -235,12 +252,23 @@ class IntentEngineImpl implements IntentEngine {
       working = working.substring(0, body.start).trim();
     }
 
-    final match = _contactNamePattern.firstMatch(working);
-    if (match == null) {
+    var name = '';
+    final hindiFirst = RegExp(
+      r'^(.+?)\s+को\s+(?:कॉल|call|dial|phone)',
+    ).firstMatch(working);
+    if (hindiFirst != null) {
+      name = hindiFirst.group(1)!.trim();
+    } else {
+      final match = _contactNamePattern.firstMatch(working);
+      if (match != null) {
+        name = match.group(1)!.trim();
+      }
+    }
+
+    if (name.isEmpty) {
       return '';
     }
 
-    var name = match.group(1)!.trim();
     name = name.replaceAll(_fillerTail, '').trim();
     name = name.replaceAll(RegExp(r'[?.!,]+$'), '').trim();
 

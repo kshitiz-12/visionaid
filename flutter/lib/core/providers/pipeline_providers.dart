@@ -7,7 +7,7 @@ import '../../features/intent/data/intent_engine_impl.dart';
 import '../../features/intent/domain/services/intent_engine.dart';
 import '../../features/ocr/data/mlkit_ocr_engine.dart';
 import '../../features/ocr/domain/services/ocr_engine.dart';
-import '../../features/vision/data/services/mlkit_object_detector.dart';
+import '../../features/vision/data/services/yolo_object_detector.dart';
 import '../../features/vision/data/services/scene_labeler.dart';
 import '../../features/vision/domain/services/object_detector_service.dart';
 import '../network/companion_client.dart';
@@ -28,7 +28,7 @@ final cameraCaptureProvider = Provider<CameraCaptureService>((ref) {
 });
 
 final objectDetectorProvider = Provider<ObjectDetectorService>((ref) {
-  final detector = MlKitObjectDetector(stream: false);
+  final detector = YoloObjectDetector();
   ref.onDispose(detector.dispose);
   return detector;
 });
@@ -46,7 +46,10 @@ final ocrEngineProvider = Provider<OcrEngine>((ref) {
 });
 
 final companionClientProvider = Provider<CompanionClient>((ref) {
-  return CompanionClient();
+  final client = CompanionClient();
+  client.startKeepAlive();
+  ref.onDispose(client.dispose);
+  return client;
 });
 
 final conversationMemoryProvider = Provider<ConversationMemory>((ref) {

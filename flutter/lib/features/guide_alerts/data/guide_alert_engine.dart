@@ -13,17 +13,19 @@ class GuideAlertEngine {
   GuideAlertEngine({
     GuideConfig? config,
     DateTime Function()? clock,
+    this.hindi = false,
   })  : config = config ?? const GuideConfig(),
         _now = clock ?? DateTime.now {
     scoring = ObjectPriorityEngine(this.config);
     risk = RiskEvaluator(this.config);
     temporal = TemporalConfirmationService(window: 10);
     cooldown = AnnouncementCooldownService(this.config);
-    speech = const ResponseGenerator();
+    speech = ResponseGenerator(hindi: hindi);
     logger = ResearchLogger();
   }
 
   final GuideConfig config;
+  final bool hindi;
   final DateTime Function() _now;
   late final ObjectPriorityEngine scoring;
   late final RiskEvaluator risk;
@@ -35,8 +37,10 @@ class GuideAlertEngine {
   DateTime? _targetStartedAt;
   String _targetLabel = '';
   bool _toldNotFound = false;
-  final Map<String, double> _lastProx = {};
+  final Map<String, int> _lastDistBand = {};
   final Set<String> _saidReached = {};
+  DateTime? _lastAnySpeech;
+  String _lastSpokenLine = '';
 
   void startTargetSearch(String label) {
     _targetLabel = label.trim().toLowerCase();
@@ -173,11 +177,21 @@ class GuideAlertEngine {
       return FrameAlertResult(announcements: const [], debugLines: debug);
     }
     final first = eligible.first.announcement!;
+    if (!first.safetyOverride && _tooSoon(now)) {
+      return FrameAlertResult(announcements: const [], debugLines: debug);
+    }
+    if (!first.safetyOverride &&
+        first.spoken == _lastSpokenLine &&
+        _lastSpokenLine.isNotEmpty) {
+      return FrameAlertResult(announcements: const [], debugLines: debug);
+    }
     _commit(first, eligible.first, now);
     return FrameAlertResult(announcements: [first], debugLines: debug);
   }
 
   void _commit(GuideAnnouncement a, _Ranked ranked, DateTime now) {
+    _lastAnySpeech = now;
+    _lastSpokenLine = a.spoken;
     cooldown.markAnnounced(
       key: a.trackKey,
       now: now,
@@ -187,6 +201,14 @@ class GuideAlertEngine {
       movement: ranked.movement,
       state: a.safetyOverride ? ObjectTrackState.danger : ObjectTrackState.announced,
     );
+  }
+
+  bool _tooSoon(DateTime now) {
+    final last = _lastAnySpeech;
+    if (last == null) {
+      return false;
+    }
+    return now.difference(last) < config.minGapBetweenSpeech;
   }
 
   _Ranked _scoreOne({
@@ -383,6 +405,18 @@ class GuideAlertEngine {
       ),
     );
     final band = scoring.bandFor(prio);
+    if (!_worthWalkingSpeak(snap, pathS, distS, conf, riskS)) {
+      return _Ranked.suppress(
+        snap: snap,
+        key: key,
+        reason: 'not-in-way',
+        debug: _debug(snap, prio, band, 'not-in-way', conf, riskS, pathS, distS, moveS, intentS, novelty),
+        distanceScore: distS,
+        pathScore: pathS,
+        riskScore: riskS,
+        movement: movement,
+      );
+    }
     final namedClose = _namedAndClose(snap, pathS, distS, conf);
     if (prio < config.announceThreshold && !namedClose) {
       return _Ranked.suppress(
@@ -405,10 +439,10 @@ class GuideAlertEngine {
       movement: movement,
     );
     final reached = speech.isReached(snap.boxProximity, snap.direction);
-    final prevProx = _lastProx[key];
-    final closer =
-        prevProx != null && snap.boxProximity > prevProx + 0.08;
-    _lastProx[key] = snap.boxProximity;
+    final bandNow = _distBand(snap);
+    final prevBand = _lastDistBand[key];
+    final closer = prevBand != null && bandNow < prevBand;
+    _lastDistBand[key] = bandNow;
 
     if (cooldown.recentlyAnnounced(key, now) && !changed) {
       if (!(reached && !_saidReached.contains(key)) && !closer) {
@@ -511,27 +545,83 @@ class GuideAlertEngine {
     return 0.0;
   }
 
+  bool _worthWalkingSpeak(
+    GuideObjectSnapshot snap,
+    double pathS,
+    double distS,
+    double conf,
+    double riskS,
+  ) {
+    final metres = snap.distanceMeters;
+    final close = distS >= 0.55 ||
+        snap.boxProximity >= 0.22 ||
+        (metres != null && metres <= 2.0);
+    if (!close && riskS < 0.85) {
+      return false;
+    }
+    final unnamed = _unnamed(snap.label);
+    if (unnamed) {
+      return pathS >= 0.70 &&
+          (snap.boxProximity >= 0.22 || (metres != null && metres <= 1.4));
+    }
+    if (pathS >= 0.70) {
+      return true;
+    }
+    return metres != null && metres <= 0.9;
+  }
+
+  int _distBand(GuideObjectSnapshot snap) {
+    final m = snap.distanceMeters;
+    if (m != null) {
+      if (m < 0.9) {
+        return 0;
+      }
+      if (m < 1.7) {
+        return 1;
+      }
+      if (m < 2.4) {
+        return 2;
+      }
+      return 3;
+    }
+    if (snap.boxProximity >= 0.42) {
+      return 0;
+    }
+    if (snap.boxProximity >= 0.22) {
+      return 1;
+    }
+    if (snap.boxProximity >= 0.10) {
+      return 2;
+    }
+    return 3;
+  }
+
+  bool _unnamed(String label) {
+    final l = label.trim().toLowerCase();
+    return l.isEmpty ||
+        l == 'obstacle' ||
+        l == 'wall' ||
+        l == 'object' ||
+        l == 'unknown' ||
+        l == 'something';
+  }
+
   bool _namedAndClose(
     GuideObjectSnapshot snap,
     double pathS,
     double distS,
     double conf,
   ) {
-    final label = snap.label.trim().toLowerCase();
-    if (label.isEmpty ||
-        label == 'obstacle' ||
-        label == 'wall' ||
-        label == 'object') {
+    if (_unnamed(snap.label) || conf < 0.45) {
       return false;
     }
-    if (conf < 0.32 || pathS < 0.40) {
+    if (pathS < 0.70) {
       return false;
-    }
-    if (distS >= 0.40 || snap.boxProximity >= 0.10) {
-      return true;
     }
     final metres = snap.distanceMeters;
-    return metres != null && metres <= 2.5;
+    return distS >= 0.55 ||
+        snap.boxProximity >= 0.22 ||
+        (metres != null && metres <= 1.8);
   }
 
   GuideObjectSnapshot _toSnapshot(RawDetection d) {
@@ -570,11 +660,12 @@ class GuideAlertEngine {
   }
 
   String _key(GuideObjectSnapshot snap) {
-    if (snap.trackingId != null) {
-      return '${snap.label}-${snap.trackingId}';
-    }
-    final x = snap.centerX?.toStringAsFixed(1) ?? 'u';
-    return '${snap.label}-$x';
+    final label = snap.label.trim().toLowerCase();
+    final x = snap.centerX;
+    final side = x == null
+        ? 'c'
+        : (x < 0.38 ? 'l' : (x > 0.62 ? 'r' : 'c'));
+    return '$label-$side';
   }
 
   String _debug(

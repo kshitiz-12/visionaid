@@ -11,6 +11,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../../../core/providers/pipeline_providers.dart';
 import '../../../../core/providers/voice_providers.dart';
+import '../../../../core/services/sentence_speech_queue.dart';
 import '../../../../core/services/spoken_confirm.dart';
 import '../../../../core/services/user_prefs.dart';
 import '../../../../core/widgets/multi_tap_tracker.dart';
@@ -45,6 +46,10 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
   late final MultiTapTracker _taps;
   late final TwoFingerDown _twoFingers;
   bool _closing = false;
+  SentenceSpeechQueue? _speechQ;
+
+  SentenceSpeechQueue get _sentences =>
+      _speechQ ??= SentenceSpeechQueue(ref.read(textToSpeechProvider));
 
   @override
   void initState() {
@@ -76,6 +81,7 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
   @override
   void dispose() {
     _taps.dispose();
+    unawaited(_speechQ?.stop());
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -113,7 +119,7 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       return;
     }
     setState(() => _status = message);
-    await ref.read(textToSpeechProvider).speak(message);
+    await ref.read(textToSpeechProvider).speak(message, natural: true);
     await prefs.setBool('visionaid_welcome_spoken', true);
   }
 
@@ -160,7 +166,7 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       _status = message;
       _isAlert = alert;
     });
-    await ref.read(textToSpeechProvider).speak(message);
+    await ref.read(textToSpeechProvider).speak(message, natural: !alert);
   }
 
   Future<void> _listenAndHandle() async {
@@ -179,8 +185,10 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
     final lang = AppLanguage.fromCode(await UserPrefs.getLanguageCode());
 
     try {
+      await _sentences.stop();
       await tts.stop();
-      await Future<void>.delayed(const Duration(milliseconds: 550));
+      unawaited(ref.read(companionClientProvider).wake());
+      await Future<void>.delayed(const Duration(milliseconds: 220));
       final spoken = await stt.listen(localeId: lang.sttLocale);
       if (!mounted) {
         return;
@@ -213,6 +221,7 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
     });
     try {
       await ref.read(textToSpeechProvider).stop();
+      await _sentences.stop();
       await _handleSpoken(spokenText);
     } catch (error) {
       await _say(error.toString().replaceFirst('Bad state: ', ''), alert: true);
@@ -330,6 +339,11 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
   }
 
   Future<void> _handleSpoken(String spokenText) async {
+    if (spokenText.trim().isEmpty) {
+      await _say("I didn't catch that. Tap once and try again.");
+      return;
+    }
+
     final intent = await ref.read(intentEngineProvider).classify(spokenText);
 
     if (intent.type == IntentType.quit) {
@@ -431,23 +445,54 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
     }
 
     var preview = '';
+    var streamed = false;
     final result = await ref.read(assistantPipelineProvider).handleSpoken(
           spokenText,
           onSentence: (sentence) {
             if (sentence.trim().isEmpty || !mounted) {
               return;
             }
+            streamed = true;
             preview = preview.isEmpty ? sentence : '$preview $sentence';
             setState(() {
               _status = preview;
               _isAlert = false;
             });
+            _sentences.enqueue(sentence);
           },
         );
-    await _say(
-      result.spokenReply,
-      alert: result.isAlert || result.intent.type == IntentType.emergency,
-    );
+    await _sentences.waitIdle();
+    final reply = result.spokenReply.trim();
+    if (reply.isEmpty) {
+      return;
+    }
+    final covered = streamed && _streamCoveredReply(preview, reply);
+    if (!covered) {
+      if (streamed) {
+        await _sentences.stop();
+      }
+      await _say(
+        reply,
+        alert: result.isAlert || result.intent.type == IntentType.emergency,
+      );
+    } else if (mounted && reply != preview) {
+      setState(() {
+        _status = reply;
+        _isAlert = result.isAlert;
+      });
+    }
+  }
+
+  bool _streamCoveredReply(String preview, String reply) {
+    final p = preview.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+    final r = reply.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (p.isEmpty) {
+      return false;
+    }
+    if (r.startsWith(p) || p.startsWith(r)) {
+      return true;
+    }
+    return p.length >= (r.length * 0.7).round();
   }
 
   @override

@@ -3,6 +3,7 @@ class ConversationMemory {
   String lastScene = '';
 
   List<Map<String, String>> get history => List.unmodifiable(_turns);
+  String lastReply = '';
 
   void rememberScene(String summary) {
     final clipped = summary.trim();
@@ -18,6 +19,7 @@ class ConversationMemory {
     }
     if (assistant.trim().isNotEmpty) {
       _turns.add({'role': 'assistant', 'content': assistant.trim()});
+      lastReply = assistant.trim();
     }
     while (_turns.length > 6) {
       _turns.removeAt(0);

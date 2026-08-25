@@ -1,4 +1,5 @@
 /// Splits streaming assistant text into speakable sentences.
+/// Only `.` `?` `!` `।` — never 3–5 word or length chunks.
 class SentenceBuffer {
   String _buf = '';
 
@@ -28,26 +29,28 @@ class SentenceBuffer {
   static int _sentenceEnd(String text) {
     for (var i = 0; i < text.length; i++) {
       final ch = text[i];
-      final stop = ch == '.' || ch == '!' || ch == '?' || ch == '।';
-      if (!stop) {
+      if (ch == '।') {
+        return i;
+      }
+      if (ch != '.' && ch != '!' && ch != '?') {
         continue;
       }
       if (ch == '.' && i > 0 && _isDigit(text[i - 1])) {
         continue;
       }
-      if (i + 1 >= text.length || text[i + 1] == ' ' || text[i + 1] == '\n') {
-        return i;
+      if (i + 1 < text.length && text[i + 1] == '.') {
+        continue;
       }
-    }
-    // Hindi/English mix often has no period until the end. Speak a clause.
-    if (text.trim().length >= 70) {
-      final space = text.lastIndexOf(' ');
-      if (space >= 40) {
-        return space - 1;
+      if (i + 1 >= text.length ||
+          text[i + 1] == ' ' ||
+          text[i + 1] == '\n' ||
+          text[i + 1] == '।') {
+        return i;
       }
     }
     return -1;
   }
 
-  static bool _isDigit(String ch) => ch.codeUnitAt(0) >= 48 && ch.codeUnitAt(0) <= 57;
+  static bool _isDigit(String ch) =>
+      ch.codeUnitAt(0) >= 48 && ch.codeUnitAt(0) <= 57;
 }
