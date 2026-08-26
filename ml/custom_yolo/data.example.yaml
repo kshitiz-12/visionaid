@@ -1,0 +1,27 @@
+# VisionAid++ custom YOLO classes
+# Class order MUST match flutter/assets/models/visionaid_custom.names
+# and CustomYoloCatalog.classes
+
+path: .  # set to your dataset root on Colab
+train: images/train
+val: images/val
+
+names:
+  0: stairs
+  1: ladder
+  2: pothole
+  3: open_drain
+  4: curb
+  5: wet_floor_sign
+  6: wall
+  7: door
+  8: inr_10
+  9: inr_20
+  10: inr_50
+  11: inr_100
+  12: inr_200
+  13: inr_500
+  14: blister_pack
+  15: syrup_bottle
+  16: dropper_bottle
+  17: ointment_tube

@@ -80,7 +80,7 @@ flutter:
 
   assets:
     - .env
-    - assets/models/efficientdet_lite0.tflite
+    - assets/models/
     - assets/audio/proximity_beep.wav
 
   # An image asset can refer to one or more resolution-specific "variants", see

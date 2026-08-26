@@ -90,7 +90,10 @@ function getStatus(_req, res) {
     message: 'Companion status',
     data: {
       chat: hasAnyKey(),
+      gemini: Boolean(env.geminiApiKey),
+      openai: Boolean(env.openaiApiKey),
       naturalVoice: Boolean(env.openaiApiKey),
+      model: env.geminiApiKey ? env.geminiModel : env.openaiModel,
     },
     error: null,
   });

@@ -48,3 +48,5 @@ Language, your name, emergency name/number, voice speed. No research overlay.
 ## Honest limits
 
 Distances are approximate. Walking cannot name food. First chat after Render sleeps can be slow. Rebuild the APK after UI/code changes.
+
+Optional: drop a trained `visionaid_custom.tflite` into `flutter/assets/models/` (stairs, drains, INR notes, med packs) so walking names those on-device. Until then, official YOLO + Image Labeler fill what they can. See `flutter/assets/models/README.md`.

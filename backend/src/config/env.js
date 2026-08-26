@@ -83,7 +83,7 @@ const env = {
   openaiModel: raw.OPENAI_MODEL || 'gpt-4o-mini',
   openaiTtsModel: raw.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts',
   openaiTtsVoice: raw.OPENAI_TTS_VOICE || 'coral',
-  geminiModel: (raw.GEMINI_MODEL || 'gemini-2.5-flash').trim() || 'gemini-2.5-flash',
+  geminiModel: (raw.GEMINI_MODEL || 'gemini-3.6-flash').trim() || 'gemini-3.6-flash',
 };
 
 module.exports = env;

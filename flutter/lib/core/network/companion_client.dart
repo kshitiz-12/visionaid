@@ -125,8 +125,8 @@ class CompanionClient {
       request.body = jsonEncode(body);
       final streamed = await _http.send(request).timeout(
             imageBase64.isNotEmpty
-                ? const Duration(seconds: 26)
-                : const Duration(seconds: 18),
+                ? const Duration(seconds: 32)
+                : const Duration(seconds: 28),
           );
       if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
         return chat(
@@ -144,7 +144,7 @@ class CompanionClient {
       var buffer = '';
       try {
         await for (final chunk in streamed.stream
-            .timeout(const Duration(seconds: 14))
+            .timeout(const Duration(seconds: 22))
             .transform(utf8.decoder)) {
           buffer += chunk;
           final blocks = buffer.split('\n\n');
@@ -241,8 +241,8 @@ class CompanionClient {
     unawaited(wake(timeout: const Duration(seconds: 8)));
     Future<http.Response> send(Duration timeout) => _postChat(body, timeout);
     final firstTimeout = imageBase64.isNotEmpty
-        ? const Duration(seconds: 26)
-        : const Duration(seconds: 18);
+        ? const Duration(seconds: 32)
+        : const Duration(seconds: 28);
     try {
       response = await send(firstTimeout);
     } on TimeoutException {

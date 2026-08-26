@@ -36,6 +36,10 @@ class SceneLabeler {
     return named.take(6).toList();
   }
 
+  Future<List<RawDetection>> labelFile(String path) {
+    return label(InputImage.fromFilePath(path));
+  }
+
   /// Boxes give distance; labels give names. Keep both, drop junk "object".
   static List<RawDetection> merge(
     List<RawDetection> objects,
@@ -67,6 +71,7 @@ class SceneLabeler {
           frameHeight: d.frameHeight,
           trackingId: d.trackingId,
           timestamp: d.timestamp,
+          distanceMeters: d.distanceMeters,
         ),
       );
     }

@@ -72,8 +72,10 @@ class ResponseGenerator {
       if (_isVehicle(snap.label)) {
         return hindi ? 'रुकिए. गाड़ी $dir.' : 'Stop. Vehicle $dir.';
       }
-      if (snap.label == 'stairs') {
-        return hindi ? 'रुकिए. सीढ़ियाँ $dir.' : 'Stop. Stairs $dir.';
+      if (_isGroundHazard(snap.label)) {
+        return hindi
+            ? 'रुकिए. ${_hiNoun(snap.label)} $dir.'
+            : 'Stop. ${_enNoun(snap.label)} $dir.';
       }
       if (dist.isEmpty) {
         return hindi ? 'रुकिए. $name $dir.' : 'Stop. $name $dir.';
@@ -81,8 +83,12 @@ class ResponseGenerator {
       return hindi ? 'रुकिए. $name $dir, $dist.' : 'Stop. $name $dir, $dist.';
     }
 
-    if (snap.label == 'stairs') {
-      return _line(hindi ? 'सीढ़ियाँ' : 'Stairs', dir, dist);
+    if (_isGroundHazard(snap.label)) {
+      return _line(
+        hindi ? _hiNoun(snap.label) : _cap(_enNoun(snap.label)),
+        dir,
+        dist,
+      );
     }
     if (_isVehicle(snap.label)) {
       return _line(hindi ? 'गाड़ी' : 'Vehicle', dir, dist);
@@ -128,13 +134,11 @@ class ResponseGenerator {
     if (l.isNotEmpty &&
         l != 'object' &&
         l != 'unknown' &&
-        l != 'obstacle' &&
-        l != 'wall' &&
         l != 'something') {
       if (hindi) {
         return _hiNoun(l);
       }
-      return l;
+      return _enNoun(l);
     }
     final box = snap.boundingBox;
     if (box == null) {
@@ -154,6 +158,30 @@ class ResponseGenerator {
     return hindi ? 'चीज़' : 'something';
   }
 
+  String _enNoun(String l) {
+    return switch (l) {
+      'stairs' || 'ladder' => 'stairs',
+      'pothole' => 'pothole',
+      'open_drain' => 'open drain',
+      'curb' => 'curb',
+      'wet_floor_sign' => 'wet floor sign',
+      'wall' => 'wall',
+      'obstacle' => 'obstacle',
+      'door' => 'door',
+      'inr_10' => '10 rupee note',
+      'inr_20' => '20 rupee note',
+      'inr_50' => '50 rupee note',
+      'inr_100' => '100 rupee note',
+      'inr_200' => '200 rupee note',
+      'inr_500' => '500 rupee note',
+      'blister_pack' => 'pill strip',
+      'syrup_bottle' => 'syrup bottle',
+      'dropper_bottle' => 'dropper bottle',
+      'ointment_tube' => 'ointment tube',
+      _ => l,
+    };
+  }
+
   String _hiNoun(String l) {
     return switch (l) {
       'person' || 'people' => 'व्यक्ति',
@@ -161,10 +189,35 @@ class ResponseGenerator {
       'table' => 'मेज़',
       'door' => 'दरवाज़ा',
       'bottle' => 'बोतल',
-      'stairs' => 'सीढ़ियाँ',
+      'stairs' || 'ladder' => 'सीढ़ियाँ',
+      'pothole' => 'गड्ढा',
+      'open_drain' => 'खुला नाला',
+      'curb' => 'फ़ुटपाथ किनारा',
+      'wet_floor_sign' => 'गीला फ़र्श',
+      'wall' => 'दीवार',
+      'obstacle' => 'रुकावट',
       'car' || 'vehicle' || 'truck' || 'bus' => 'गाड़ी',
+      'inr_10' => 'दस रुपये का नोट',
+      'inr_20' => 'बीस रुपये का नोट',
+      'inr_50' => 'पचास रुपये का नोट',
+      'inr_100' => 'सौ रुपये का नोट',
+      'inr_200' => 'दो सौ रुपये का नोट',
+      'inr_500' => 'पाँच सौ रुपये का नोट',
+      'blister_pack' => 'दवाई की पट्टी',
+      'syrup_bottle' => 'सिरप की बोतल',
+      'dropper_bottle' => 'ड्रॉपर बोतल',
+      'ointment_tube' => 'मरहम की ट्यूब',
       _ => l,
     };
+  }
+
+  bool _isGroundHazard(String label) {
+    return label == 'stairs' ||
+        label == 'ladder' ||
+        label == 'pothole' ||
+        label == 'open_drain' ||
+        label == 'curb' ||
+        label == 'wet_floor_sign';
   }
 
   bool _isVehicle(String label) {

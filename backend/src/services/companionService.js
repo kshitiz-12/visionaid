@@ -154,18 +154,12 @@ function stripMarkup(text) {
 }
 
 function geminiModels() {
-  const preferred = (env.geminiModel || '').trim();
-  // Prefer Flash models; try the fastest known Flash first after preferred.
-  const fallbacks = [
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-flash-latest',
-    'gemini-1.5-flash',
-  ];
-  return [...new Set([preferred, ...fallbacks].filter(Boolean))];
+  // Product uses Gemini 3.6 Flash only — other Flash IDs fail on this key.
+  const preferred = (env.geminiModel || 'gemini-3.6-flash').trim();
+  return [preferred || 'gemini-3.6-flash'];
 }
 
-function geminiPayload(userContent, imageBase64, { disableThinking = true } = {}) {
+function geminiPayload(userContent, imageBase64) {
   const parts = [{ text: userContent }];
   if (imageBase64) {
     parts.push({
@@ -175,17 +169,18 @@ function geminiPayload(userContent, imageBase64, { disableThinking = true } = {}
       },
     });
   }
-  const generationConfig = {
-    temperature: 0.55,
-    maxOutputTokens: 320,
-  };
-  if (disableThinking) {
-    generationConfig.thinkingConfig = { thinkingBudget: 0 };
-  }
+  // 3.6 Flash is a thinking model. Small budget + no thought echo keeps voice replies filled.
   return {
     systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
     contents: [{ role: 'user', parts }],
-    generationConfig,
+    generationConfig: {
+      temperature: 0.55,
+      maxOutputTokens: 768,
+      thinkingConfig: {
+        thinkingBudget: 512,
+        includeThoughts: false,
+      },
+    },
   };
 }
 
@@ -196,9 +191,24 @@ function geminiUrl(method, model) {
   );
 }
 
-async function generateGemini(userContent, imageBase64, model, options) {
-  const payload = geminiPayload(userContent, imageBase64, options);
-  const response = await fetch(geminiUrl('generateContent', model), {
+async function fetchWithTimeout(url, options, ms = 22000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new AppError('Gemini timed out', { statusCode: 504, code: 'AI_UPSTREAM' });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function generateGemini(userContent, imageBase64, model) {
+  const payload = geminiPayload(userContent, imageBase64);
+  const response = await fetchWithTimeout(geminiUrl('generateContent', model), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -220,24 +230,11 @@ async function generateGemini(userContent, imageBase64, model, options) {
   return { text, provider: 'gemini' };
 }
 
-async function chatGeminiWithModel(userContent, imageBase64, model) {
-  try {
-    return await generateGemini(userContent, imageBase64, model, { disableThinking: true });
-  } catch (error) {
-    const detail = String(error?.message || error || '');
-    // Only retry with thinking if the API rejected the thinkingConfig itself.
-    if (/thinking|budget|Unknown name|INVALID_ARGUMENT/i.test(detail)) {
-      return generateGemini(userContent, imageBase64, model, { disableThinking: false });
-    }
-    throw error;
-  }
-}
-
 async function chatGemini(userContent, imageBase64) {
   let lastError;
   for (const model of geminiModels()) {
     try {
-      return await chatGeminiWithModel(userContent, imageBase64, model);
+      return await generateGemini(userContent, imageBase64, model);
     } catch (error) {
       lastError = error;
       console.error('[companion] gemini:', model, error.message);
@@ -247,13 +244,13 @@ async function chatGemini(userContent, imageBase64) {
 }
 
 async function* streamGemini(userContent, imageBase64, model) {
-  const payload = geminiPayload(userContent, imageBase64, { disableThinking: true });
+  const payload = geminiPayload(userContent, imageBase64);
   const url = `${geminiUrl('streamGenerateContent', model)}&alt=sse`;
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
-  });
+  }, 25000);
   if (!response.ok || !response.body) {
     const body = await response.json().catch(() => ({}));
     const lastDetail = body.error?.message || `Gemini stream failed (${response.status})`;
@@ -264,7 +261,11 @@ async function* streamGemini(userContent, imageBase64, model) {
   const decoder = new TextDecoder();
   let buf = '';
   let emitted = '';
+  const started = Date.now();
   while (true) {
+    if (Date.now() - started > 28000) {
+      throw new AppError('Gemini stream timed out', { statusCode: 504, code: 'AI_UPSTREAM' });
+    }
     const { done, value } = await reader.read();
     if (done) {
       break;
@@ -316,27 +317,27 @@ async function* chatStream(input) {
   const userContent = buildUserPayload(input);
   const imageBase64 = stripDataUrl(input.imageBase64);
   if (env.geminiApiKey) {
+    const models = geminiModels();
+    // Stream only the first model — cascading streams was hanging for ~90s.
     let lastError;
-    for (const model of geminiModels()) {
-      try {
-        let gotText = false;
-        for await (const piece of streamGemini(userContent, imageBase64, model)) {
-          if (piece) {
-            gotText = true;
-            yield piece;
-          }
+    try {
+      let gotText = false;
+      for await (const piece of streamGemini(userContent, imageBase64, models[0])) {
+        if (piece) {
+          gotText = true;
+          yield piece;
         }
-        if (gotText) {
-          return;
-        }
-        lastError = new AppError('The assistant returned an empty reply', {
-          statusCode: 502,
-          code: 'AI_EMPTY',
-        });
-      } catch (error) {
-        lastError = error;
-        console.error('[companion] stream:', model, error.message);
       }
+      if (gotText) {
+        return;
+      }
+      lastError = new AppError('The assistant returned an empty reply', {
+        statusCode: 502,
+        code: 'AI_EMPTY',
+      });
+    } catch (error) {
+      lastError = error;
+      console.error('[companion] stream:', models[0], error.message);
     }
     try {
       const full = await chatGemini(userContent, imageBase64);

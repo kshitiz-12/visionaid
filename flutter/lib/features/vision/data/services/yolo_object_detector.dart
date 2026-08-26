@@ -1,13 +1,18 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../../domain/services/object_detector_service.dart';
+import 'custom_yolo_catalog.dart';
 import 'mlkit_object_detector.dart';
 import 'yolo_mapper.dart';
 
 /// Still-image YOLO (home photo). Live walking uses [YOLOView] instead.
+///
+/// Prefers a fine-tuned `visionaid_custom.tflite` when bundled; otherwise
+/// official `yolo26s` / `yolo26n`.
 class YoloObjectDetector implements ObjectDetectorService {
   YoloObjectDetector({MlKitObjectDetector? fallback})
       : _fallback = fallback ?? MlKitObjectDetector(stream: false);
@@ -15,10 +20,51 @@ class YoloObjectDetector implements ObjectDetectorService {
   final MlKitObjectDetector _fallback;
   YOLO? _yolo;
   bool _yoloFailed = false;
+  static String? _cachedPath;
+  static bool? _customPresent;
 
-  static String modelId() {
-    return YOLO.defaultOfficialModel(task: YOLOTask.detect) ?? 'yolo26n';
+  /// Official Ultralytics detect model (fallback when no custom weights).
+  static String officialModelId() {
+    final ids = YOLO.officialModels(task: YOLOTask.detect);
+    if (ids.contains('yolo26s')) {
+      return 'yolo26s';
+    }
+    if (ids.contains('yolo26n')) {
+      return 'yolo26n';
+    }
+    return YOLO.defaultOfficialModel(task: YOLOTask.detect) ?? 'yolo26s';
   }
+
+  /// True when fine-tuned weights are in the APK.
+  static Future<bool> hasCustomModel() async {
+    if (_customPresent != null) {
+      return _customPresent!;
+    }
+    try {
+      await rootBundle.load(CustomYoloCatalog.assetModel);
+      _customPresent = true;
+    } catch (_) {
+      _customPresent = false;
+    }
+    CustomYoloCatalog.modelBundled = _customPresent;
+    return _customPresent!;
+  }
+
+  /// Asset path or official model id for [YOLO] / [YOLOView].
+  static Future<String> resolveModelPath() async {
+    if (_cachedPath != null) {
+      return _cachedPath!;
+    }
+    if (await hasCustomModel()) {
+      _cachedPath = CustomYoloCatalog.assetModel;
+    } else {
+      _cachedPath = officialModelId();
+    }
+    return _cachedPath!;
+  }
+
+  /// Sync helper for tests / after [resolveModelPath] has run.
+  static String modelId() => _cachedPath ?? officialModelId();
 
   Future<bool> _ensureYolo() async {
     if (_yoloFailed) {
@@ -28,8 +74,9 @@ class YoloObjectDetector implements ObjectDetectorService {
       return true;
     }
     try {
+      final path = await resolveModelPath();
       _yolo = YOLO(
-        modelPath: modelId(),
+        modelPath: path,
         task: YOLOTask.detect,
         useGpu: true,
         useMultiInstance: true,
@@ -54,7 +101,7 @@ class YoloObjectDetector implements ObjectDetectorService {
     if (await _ensureYolo()) {
       try {
         final bytes = await File(imagePath).readAsBytes();
-        final raw = await _yolo!.predict(bytes, confidenceThreshold: 0.25);
+        final raw = await _yolo!.predict(bytes, confidenceThreshold: 0.22);
         final list = raw['detections'];
         if (list is List) {
           final results = <YOLOResult>[];

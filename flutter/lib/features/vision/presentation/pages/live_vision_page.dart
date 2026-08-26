@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -67,8 +68,12 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
   int _clearFrames = 0;
   DateTime? _saidClearAt;
   bool _useYolo = true;
+  String _yoloModelPath = YoloObjectDetector.modelId();
   final _yoloCtrl = YOLOViewController();
   YoloGeminiFallback? _geminiFallback;
+  List<RawDetection> _hazards = const [];
+  DateTime? _hazardAt;
+  bool _hazardBusy = false;
 
   @override
   void initState() {
@@ -103,7 +108,9 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
     }
     _queue ??= VoiceAnnouncementQueue(tts);
     _geminiFallback ??= YoloGeminiFallback(ref.read(companionClientProvider));
+    _guideLabeler ??= SceneLabeler();
     await _walk.warmup();
+    _yoloModelPath = await YoloObjectDetector.resolveModelPath();
 
     final status = await Permission.camera.request();
     if (!status.isGranted) {
@@ -142,16 +149,55 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
     _busyFrame = true;
     unawaited(() async {
       try {
-        await _ingestWalk(YoloMapper.toRaw(results), fromYolo: true);
+        final objects = [
+          ...YoloMapper.toRaw(results),
+          ..._hazards,
+        ];
+        await _ingestWalk(objects, fromYolo: true);
+        unawaited(_refreshHazards());
       } finally {
         _busyFrame = false;
       }
     }());
   }
 
+  /// YOLO/COCO cannot see walls or stairs. Image Labeler fills those gaps.
+  Future<void> _refreshHazards() async {
+    if (!_useYolo || _hazardBusy || !_streaming) {
+      return;
+    }
+    final now = DateTime.now();
+    if (_hazardAt != null &&
+        now.difference(_hazardAt!) < const Duration(milliseconds: 1400)) {
+      return;
+    }
+    final labeler = _guideLabeler;
+    if (labeler == null) {
+      return;
+    }
+    _hazardBusy = true;
+    _hazardAt = now;
+    try {
+      final jpeg = await _yoloCtrl.capturePhoto(withOverlays: false);
+      if (jpeg == null || jpeg.isEmpty) {
+        return;
+      }
+      final file = File(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}visionaid_walk_label.jpg',
+      );
+      await file.writeAsBytes(jpeg, flush: true);
+      final labels = await labeler.labelFile(file.path);
+      _hazards = YoloMapper.hazardBoxesFromLabels(labels);
+    } catch (_) {
+      // Keep last hazards; labeling is best-effort.
+    } finally {
+      _hazardBusy = false;
+    }
+  }
+
   Future<void> _onYoloReady(String path, YOLOTask? task) async {
     await _yoloCtrl.setShowOverlays(false);
-    await _yoloCtrl.setConfidenceThreshold(0.25);
+    await _yoloCtrl.setConfidenceThreshold(0.22);
     if (!mounted) {
       return;
     }
@@ -532,14 +578,14 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
                         ? const Center(child: CircularProgressIndicator())
                         : _useYolo
                             ? YOLOView(
-                                modelPath: YoloObjectDetector.modelId(),
+                                modelPath: _yoloModelPath,
                                 task: YOLOTask.detect,
                                 controller: _yoloCtrl,
-                                confidenceThreshold: 0.25,
+                                confidenceThreshold: 0.22,
                                 useGpu: true,
                                 streamingConfig: const YOLOStreamingConfig(
-                                  maxFPS: 12,
-                                  inferenceFrequency: 12,
+                                  maxFPS: 10,
+                                  inferenceFrequency: 10,
                                   includeMasks: false,
                                   includePoses: false,
                                   includeOBB: false,
