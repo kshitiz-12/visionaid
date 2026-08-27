@@ -38,8 +38,14 @@ class IntentEngineImpl implements IntentEngine {
       RegExp(r'\b(ये\s*पढ़ो|टेक्स्ट\s*पढ़ो|साइन\s*पढ़ो)\b'),
     ],
     IntentType.navigation: [
-      RegExp(r'\b(guide\s+me|walk\s+with\s+me|live\s+guide|take\s+me\s+(there|ahead))\b'),
-      RegExp(r'\b(गाइड\s*मी|साथ\s*चलो|नेविगेट)\b'),
+      RegExp(r'\b(guide\s+me|walk\s+with\s+me|live\s+guide|look\s+ahead)\b'),
+      RegExp(r'\b(गाइड\s*मी|साथ\s*चलो|आगे\s*देखो)\b'),
+    ],
+    IntentType.routeNavigate: [
+      RegExp(
+        r'\b(navigate\s+to|take\s+me\s+to|directions?\s+to|walk\s+to|go\s+to)\b',
+      ),
+      RegExp(r'\b(ले\s*चलो|रास्ता\s*बताओ|नेविगेट)\b'),
     ],
     IntentType.findObject: [
       RegExp(
@@ -69,10 +75,22 @@ class IntentEngineImpl implements IntentEngine {
     'laptop': RegExp(r'\b(laptops?|computer|notebook)\b|\bलैपटॉप\b'),
     'headphones': RegExp(r'\b(headphones?|earphones?|earbuds?|headset)\b|\bहेडफोन\b'),
     'purse': RegExp(r'\b(purse|handbag|wallet|bag)\b|\bपर्स\b|\bबैग\b'),
+    'bottle': RegExp(r'\bbottles?\b|\bबोतल\b'),
+    'keys': RegExp(r'\bkeys?\b|\bचाबी\b|\bचाबियाँ\b'),
     'vehicle': RegExp(r'\b(car|bus|truck|vehicle|bike)\b|\bगाड़ी\b|\bकार\b'),
     'stairs': RegExp(r'\bstairs?\b|\bसीढ़ि'),
     'exit': RegExp(r'\bexits?\b|\bनिकास\b'),
   };
+
+  static final _routeDestination = RegExp(
+    r'\b(?:navigate\s+to|take\s+me\s+to|directions?\s+to|walk\s+to|go\s+to)\s+(.+)$',
+    caseSensitive: false,
+  );
+
+  static final _freeObjectTarget = RegExp(
+    r'\b(?:find|locate|look\s+for|where\s+is)\s+(?:my\s+|the\s+)?(.+)$',
+    caseSensitive: false,
+  );
 
   static final _contactNamePattern = RegExp(
     r'\b(?:call|dial|phone|whatsapp|message|text|sms|send(?:\s+a)?(?:\s+whatsapp)?(?:\s+message)?(?:\s+sms)?|कॉल|मैसेज|फोन|व्हाट्सऐप)\s+(?:a\s+)?(?:message\s+|whatsapp\s+|sms\s+|text\s+)?(?:to\s+|को\s+)?(.+)$',
@@ -166,7 +184,11 @@ class IntentEngineImpl implements IntentEngine {
       contactName = '';
       isComm = true;
     }
-    final target = isComm ? '' : _extractObjectTarget(lower);
+    final target = isComm
+        ? ''
+        : (type == IntentType.routeNavigate
+            ? _extractRouteDestination(lower)
+            : _extractObjectTarget(lower));
     final messageBody = isComm ? _extractBody(lower) : '';
 
     final commAction = switch (type) {
@@ -227,6 +249,17 @@ class IntentEngineImpl implements IntentEngine {
     return CommAction.call;
   }
 
+  String _extractRouteDestination(String lower) {
+    final match = _routeDestination.firstMatch(lower);
+    if (match == null) {
+      return '';
+    }
+    var name = (match.group(1) ?? '').trim();
+    name = name.replaceAll(_fillerTail, '').trim();
+    name = name.replaceAll(RegExp(r'[?.!,]+$'), '').trim();
+    return name;
+  }
+
   String _extractObjectTarget(String lower) {
     String best = '';
     var bestIndex = lower.length + 1;
@@ -237,7 +270,20 @@ class IntentEngineImpl implements IntentEngine {
         best = entry.key;
       }
     }
-    return best;
+    if (best.isNotEmpty) {
+      return best;
+    }
+    final free = _freeObjectTarget.firstMatch(lower);
+    if (free == null) {
+      return '';
+    }
+    var name = (free.group(1) ?? '').trim();
+    name = name.replaceAll(_fillerTail, '').trim();
+    name = name.replaceAll(RegExp(r'[?.!,]+$'), '').trim();
+    if (name.length < 2 || name.length > 40) {
+      return '';
+    }
+    return name;
   }
 
   String _extractBody(String lower) {

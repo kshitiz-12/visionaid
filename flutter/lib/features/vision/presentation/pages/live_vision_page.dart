@@ -13,15 +13,17 @@ import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
 import '../../../../core/providers/pipeline_providers.dart';
 import '../../../../core/providers/voice_providers.dart';
+import '../../../../core/services/research_metrics.dart';
 import '../../../../core/services/user_prefs.dart';
 import '../../../../core/widgets/multi_tap_tracker.dart';
 import '../../../../core/widgets/two_finger_down.dart';
 import '../../../guide_alerts/data/guide_alert_engine.dart';
+import '../../../guide_alerts/data/object_priority_engine.dart';
 import '../../../guide_alerts/data/voice_announcement_queue.dart';
 import '../../../guide_alerts/domain/guide_config.dart';
 import '../../../guide_alerts/domain/guide_models.dart';
-import '../../../walking/data/frame_throttle.dart';
 import '../../../walking/data/hazard_cue.dart';
+import '../../../walking/data/motion_adaptive_throttle.dart';
 import '../../../walking/data/walking_latency.dart';
 import '../../../walking/data/walking_pipeline.dart';
 import '../../data/services/camera_image_converter.dart';
@@ -56,7 +58,7 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
   final _walk = WalkingPipeline();
   bool _voiceLoop = false;
   final _hazard = HazardCue();
-  final _frames = FrameThrottle(minIntervalMs: 80);
+  final _motionFrames = MotionAdaptiveThrottle();
   MlKitObjectDetector? _guideDetector;
   SceneLabeler? _guideLabeler;
   List<RawDetection> _lastNames = const [];
@@ -74,6 +76,8 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
   List<RawDetection> _hazards = const [];
   DateTime? _hazardAt;
   bool _hazardBusy = false;
+  DateTime? _depthAt;
+  bool _depthBusy = false;
 
   @override
   void initState() {
@@ -111,6 +115,10 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
     _guideLabeler ??= SceneLabeler();
     await _walk.warmup();
     _yoloModelPath = await YoloObjectDetector.resolveModelPath();
+    await _motionFrames.start();
+    ResearchMetrics.instance.startSession(
+      label: widget.findTarget.trim().isEmpty ? 'walk' : 'find',
+    );
 
     final status = await Permission.camera.request();
     if (!status.isGranted) {
@@ -125,11 +133,17 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
 
     _streaming = true;
     unawaited(_yoloCtrl.setShowOverlays(false));
+    final finding = widget.findTarget.trim();
+    final hi = lang.code.toLowerCase().startsWith('hi');
     setState(() {
       _starting = false;
-      _status = lang.code.toLowerCase().startsWith('hi')
-          ? 'आगे देखें.'
-          : 'Look ahead.';
+      if (finding.isNotEmpty) {
+        _status = hi
+            ? '$finding ढूँढ रहे हैं. धीरे घुमाइए.'
+            : 'Looking for $finding. Sweep slowly.';
+      } else {
+        _status = hi ? 'आगे देखें.' : 'Look ahead.';
+      }
     });
     unawaited(tts.speak(_status));
     await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -143,7 +157,7 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
       return;
     }
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (_frames.shouldSkip(busy: _busyFrame, nowMs: now)) {
+    if (_motionFrames.shouldSkip(busy: _busyFrame, nowMs: now)) {
       return;
     }
     _busyFrame = true;
@@ -155,10 +169,36 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
         ];
         await _ingestWalk(objects, fromYolo: true);
         unawaited(_refreshHazards());
+        unawaited(_refreshDepth());
       } finally {
         _busyFrame = false;
       }
     }());
+  }
+
+  Future<void> _refreshDepth() async {
+    final fused = _walk.fusedDepth;
+    if (fused == null || !fused.midas.available || _depthBusy || !_streaming) {
+      return;
+    }
+    final now = DateTime.now();
+    if (_depthAt != null &&
+        now.difference(_depthAt!) < const Duration(milliseconds: 900)) {
+      return;
+    }
+    _depthBusy = true;
+    _depthAt = now;
+    try {
+      final jpeg = await _yoloCtrl.capturePhoto(withOverlays: false);
+      if (jpeg == null || jpeg.isEmpty) {
+        return;
+      }
+      await fused.midas.estimateJpeg(jpeg);
+    } catch (_) {
+      // Depth is assistive; box-size remains.
+    } finally {
+      _depthBusy = false;
+    }
   }
 
   /// YOLO/COCO cannot see walls or stairs. Image Labeler fills those gaps.
@@ -168,7 +208,7 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
     }
     final now = DateTime.now();
     if (_hazardAt != null &&
-        now.difference(_hazardAt!) < const Duration(milliseconds: 1400)) {
+        now.difference(_hazardAt!) < const Duration(milliseconds: 2600)) {
       return;
     }
     final labeler = _guideLabeler;
@@ -273,27 +313,37 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
       ..frameCapturedMs = DateTime.now().millisecondsSinceEpoch
       ..inferenceCompletedMs = DateTime.now().millisecondsSinceEpoch;
     final tick = _walk.tick(raw: objects, latency: latency);
-    final pathMetres = tick.snapshots
-        .where((s) {
-          final x = s.centerX ?? 0.5;
-          return x >= 0.35 && x <= 0.65;
-        })
-        .map((s) => s.distanceMeters)
-        .whereType<double>();
-    await _hazard.pingIfWithinMetre(
-      tick.occupancy.blocked
-          ? tick.occupancy.closestMetres
-          : (pathMetres.isEmpty
-              ? null
-              : pathMetres.reduce((a, b) => a < b ? a : b)),
-    );
+    final finding = widget.findTarget.trim();
+    if (finding.isNotEmpty) {
+      final hit = _bestTargetSnap(tick.snapshots, finding);
+      if (hit != null) {
+        await _hazard.pingForTarget(
+          metres: hit.distanceMeters,
+          centerX: hit.centerX ?? 0.5,
+        );
+      }
+    } else {
+      final pathMetres = tick.snapshots
+          .where((s) {
+            final x = s.centerX ?? 0.5;
+            return x >= 0.35 && x <= 0.65;
+          })
+          .map((s) => s.distanceMeters)
+          .whereType<double>();
+      await _hazard.pingIfWithinMetre(
+        tick.occupancy.blocked
+            ? tick.occupancy.closestMetres
+            : (pathMetres.isEmpty
+                ? null
+                : pathMetres.reduce((a, b) => a < b ? a : b)),
+        pathBlocked: tick.occupancy.blocked,
+      );
+    }
     if (fromYolo) {
       unawaited(_maybeGemini(objects));
     }
     // Decision + speech must not block the next YOLO/ML Kit frame.
-    final mode = widget.findTarget.trim().isEmpty
-        ? GuideMode.liveGuide
-        : GuideMode.targetSearch;
+    final mode = finding.isEmpty ? GuideMode.liveGuide : GuideMode.targetSearch;
     final result = _alerts!.evaluateSnapshots(
       snapshots: tick.snapshots,
       mode: mode,
@@ -344,6 +394,14 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
       return;
     }
     final alert = result.announcements.first;
+    latency.decisionCompletedMs = DateTime.now().millisecondsSinceEpoch;
+    latency.ttsTriggeredMs = DateTime.now().millisecondsSinceEpoch;
+    ResearchMetrics.instance.logLatency(latency, fps: tick.fps);
+    ResearchMetrics.instance.logAnnouncement(
+      spoken: alert.spoken,
+      label: alert.label,
+      safety: alert.safetyOverride,
+    );
     if (mounted) {
       setState(() {
         _status = alert.spoken;
@@ -353,6 +411,30 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
       });
     }
     unawaited(_queue?.submit(alert));
+  }
+
+  GuideObjectSnapshot? _bestTargetSnap(
+    List<GuideObjectSnapshot> snaps,
+    String target,
+  ) {
+    GuideObjectSnapshot? best;
+    var bestScore = 0.0;
+    final scoring = ObjectPriorityEngine(const GuideConfig());
+    for (final s in snaps) {
+      final m = scoring.targetMatch(s.label, target);
+      if (m <= 0) {
+        continue;
+      }
+      final closeness = s.distanceMeters == null
+          ? s.boxProximity
+          : (1.0 - (s.distanceMeters! / 4.0).clamp(0.0, 1.0));
+      final score = m * 2 + closeness;
+      if (score > bestScore) {
+        bestScore = score;
+        best = s;
+      }
+    }
+    return best;
   }
 
   Future<void> _maybeGemini(List<RawDetection> objects) async {
@@ -415,7 +497,7 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
     final now = DateTime.now().millisecondsSinceEpoch;
     if (!_streaming ||
         _controller == null ||
-        _frames.shouldSkip(busy: _busyFrame, nowMs: now)) {
+        _motionFrames.shouldSkip(busy: _busyFrame, nowMs: now)) {
       return;
     }
     _busyFrame = true;
@@ -520,6 +602,8 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
     await _yoloCtrl.stop();
     await _queue?.stop();
     await ref.read(textToSpeechProvider).stop();
+    await ResearchMetrics.instance.persist();
+    await _walk.fusedDepth?.dispose();
     await _releaseGuideMl();
   }
 
@@ -531,12 +615,14 @@ class _LiveVisionPageState extends ConsumerState<LiveVisionPage> {
     await detector?.dispose();
     await labeler?.dispose();
     await _hazard.dispose();
+    await _motionFrames.stop();
   }
 
   @override
   void dispose() {
     _taps.dispose();
     _streaming = false;
+    unawaited(_motionFrames.stop());
     final controller = _controller;
     _controller = null;
     if (controller != null) {

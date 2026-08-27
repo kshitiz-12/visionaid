@@ -25,5 +25,8 @@ pack shapes **on-device** (less Gemini).
 4. Download `visionaid_custom.tflite` → `flutter/assets/models/`
 5. Rebuild the APK. App auto-switches when the file is present.
 
+Export uses your `data.yaml` as the INT8 calibration set (better than naive
+post-training quantization). Prefer 100–200 varied indoor/outdoor frames.
+
 Start with **hazards only** if you have limited labels; keep class ids stable
 (do not reorder — leave unused classes empty in the dataset if needed).

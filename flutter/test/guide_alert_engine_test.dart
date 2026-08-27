@@ -102,18 +102,24 @@ void main() {
     int frames = 3,
   }) {
     FrameAlertResult last = const FrameAlertResult(announcements: []);
+    FrameAlertResult? heard;
     for (var i = 0; i < frames; i++) {
       last = engine.evaluateSnapshots(
         snapshots: objects,
         mode: mode,
         findTarget: target,
       );
+      if (last.announcements.isNotEmpty) {
+        heard = last;
+      }
     }
-    return last.announcements;
+    return (heard ?? last).announcements;
   }
 
   test('critical safety event → safety override', () {
-    final engine = GuideAlertEngine();
+    final engine = GuideAlertEngine(
+      config: const GuideConfig(safetyConfirmationFrames: 1),
+    );
     final objects = [
       centerObject(
         label: 'car',
@@ -134,7 +140,7 @@ void main() {
     final objects = [
       centerObject(label: 'chair', confidence: 0.95, meters: 0.8, id: 7),
     ];
-    final first = pump(engine, objects: objects, mode: GuideMode.liveGuide, frames: 1);
+    final first = pump(engine, objects: objects, mode: GuideMode.liveGuide, frames: 2);
     expect(first, isNotEmpty);
     t = t.add(const Duration(milliseconds: 200));
     final again = engine.evaluateSnapshots(
@@ -277,7 +283,7 @@ void main() {
       objects: objects,
       mode: GuideMode.targetSearch,
       target: 'purse',
-      frames: 1,
+      frames: 2,
     );
     expect(spoken, isNotEmpty);
     expect(spoken.first.safetyOverride, isTrue);

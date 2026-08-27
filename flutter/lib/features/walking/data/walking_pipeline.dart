@@ -1,8 +1,8 @@
 import '../../guide_alerts/domain/guide_models.dart';
 import '../../vision/domain/services/object_detector_service.dart';
 import '../domain/depth_provider.dart';
-import 'composite_depth_provider.dart';
 import 'free_space_analyzer.dart';
+import 'fused_depth_provider.dart';
 import 'walking_latency.dart';
 import 'walking_tracker.dart';
 
@@ -28,13 +28,16 @@ class WalkingPipeline {
     DepthProvider? depth,
     WalkingTracker? tracker,
     FreeSpaceAnalyzer? freeSpace,
-  })  : depth = depth ?? CompositeDepthProvider(),
+  })  : depth = depth ?? FusedDepthProvider(),
         tracker = tracker ?? WalkingTracker(),
         freeSpace = freeSpace ?? const FreeSpaceAnalyzer();
 
   final DepthProvider depth;
   final WalkingTracker tracker;
   final FreeSpaceAnalyzer freeSpace;
+
+  FusedDepthProvider? get fusedDepth =>
+      depth is FusedDepthProvider ? depth as FusedDepthProvider : null;
 
   int _frames = 0;
   DateTime? _fpsAt;

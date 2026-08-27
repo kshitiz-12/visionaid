@@ -22,7 +22,9 @@ class ContactDirectory {
       return const ContactLookup(matches: [], permissionDenied: true);
     }
 
-    final all = await FlutterContacts.getAll(properties: {ContactProperty.phone});
+    final all = await FlutterContacts.getAll(
+      properties: {ContactProperty.phone, ContactProperty.name},
+    );
     final mapped = <PhoneContact>[];
     for (final contact in all) {
       if (contact.phones.isEmpty) {
@@ -32,12 +34,13 @@ class ContactDirectory {
       if (phone.isEmpty) {
         continue;
       }
+      final display = (contact.displayName ?? '').trim();
+      final searchNames = _searchNames(contact, display);
       mapped.add(
         PhoneContact(
-          displayName: (contact.displayName ?? '').trim().isEmpty
-              ? phone
-              : contact.displayName!.trim(),
+          displayName: display.isEmpty ? phone : display,
           phone: phone,
+          searchNames: searchNames,
         ),
       );
     }
@@ -51,6 +54,29 @@ class ContactDirectory {
       ];
     }
     return ContactLookup(matches: matches);
+  }
+
+  List<String> _searchNames(Contact contact, String display) {
+    final out = <String>{display};
+    final name = contact.name;
+    void add(String? value) {
+      final t = (value ?? '').trim();
+      if (t.isNotEmpty) {
+        out.add(t);
+      }
+    }
+
+    add(name.first);
+    add(name.last);
+    add(name.middle);
+    add(name.nickname);
+    add(name.prefix);
+    add(name.suffix);
+    if (name.first.isNotEmpty && name.last.isNotEmpty) {
+      out.add('${name.first} ${name.last}');
+      out.add('${name.last} ${name.first}');
+    }
+    return out.toList();
   }
 
   Future<PhoneContact?> _emergencyContact() async {

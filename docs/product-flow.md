@@ -23,8 +23,10 @@ TalkBack’s double-tap-to-activate can fight this. Turn TalkBack off while test
 | “What is in front of me?” / “ye kya hai?” | Takes **one photo** and describes it (left / right / ahead). Not the live walking loop. |
 | “Call Harry” | Dials that contact. Not AI. |
 | “Call me” / “Emergency” / tap **Emergency** | Dials the **saved emergency number**. If the call fails, opens SMS with location. |
+| “Guide me” or tap **Look ahead** | Live camera walking. **No continuous Gemini.** |
+| “Find my purse” / “Where is the chair” | Opens **live find mode** (`/live?target=…`). Beeps speed up as you center on it. |
+| “Navigate to the park” / “Take me to …” | Outdoor walking directions (needs `GEOAPIFY_API_KEY`). |
 | “Text Mom …” / “WhatsApp Harry saying …” | On-phone messaging. |
-| “Guide me” or tap **Look ahead** | Live camera walking. **No Gemini.** |
 | “Read this” | Photo + OCR, then spoken. |
 | “Quit” / “quiet” / two fingers down | Closes the app. Back button does not. |
 
@@ -50,3 +52,5 @@ Language, your name, emergency name/number, voice speed. No research overlay.
 Distances are approximate. Walking cannot name food. First chat after Render sleeps can be slow. Rebuild the APK after UI/code changes.
 
 Optional: drop a trained `visionaid_custom.tflite` into `flutter/assets/models/` (stairs, drains, INR notes, med packs) so walking names those on-device. Until then, official YOLO + Image Labeler fill what they can. See `flutter/assets/models/README.md`.
+
+Optional depth: `python ml/depth/fetch_midas.py` adds MiDaS fusion. Outdoor routes need `GEOAPIFY_API_KEY`. Study protocol: `docs/user-study-protocol.md`.

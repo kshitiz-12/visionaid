@@ -433,14 +433,34 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       return;
     }
 
-    final liveGuide = intent.type == IntentType.navigation;
+    final liveGuide = intent.type == IntentType.navigation ||
+        intent.type == IntentType.findObject;
+
+    if (intent.type == IntentType.routeNavigate) {
+      if (!mounted) {
+        return;
+      }
+      final dest = intent.target.trim();
+      if (dest.isEmpty) {
+        await _say('Where should I take you? Say navigate to the park.');
+        return;
+      }
+      context.push('/route?dest=${Uri.encodeQueryComponent(dest)}');
+      return;
+    }
 
     if (liveGuide) {
       if (!mounted) {
         return;
       }
-      final target = Uri.encodeQueryComponent(intent.target);
-      context.push('/live?target=$target');
+      if (intent.type == IntentType.findObject &&
+          intent.target.trim().isEmpty) {
+        await _say('What should I look for? Say find my purse, or find the chair.');
+        return;
+      }
+      final target = Uri.encodeQueryComponent(intent.target.trim());
+      final path = target.isEmpty ? '/live' : '/live?target=$target';
+      context.push(path);
       return;
     }
 

@@ -66,11 +66,12 @@ def main() -> None:
 
     finetuned = YOLO(str(best))
     # Android / ultralytics_yolo expects detect TFLite without end2end NMS graph.
-    print("Exporting TFLite (w8a32-style int8 weights)…")
+    print("Exporting TFLite with INT8 calibration from data.yaml…")
     exported = finetuned.export(
         format="tflite",
         imgsz=args.imgsz,
         int8=True,
+        data=str(data),  # representative dataset for better INT8 accuracy
         nms=False,
     )
     src = Path(exported)

@@ -35,7 +35,7 @@ Speech → Intent Engine → live camera stream
 
 OCR (`Read this`) uses a still frame + ML Kit Text Recognition.
 
-Gemini, ARCore, Google Maps navigation, food ordering, and persistent spatial maps are **not** implemented.
+Gemini continuous walking, ARCore live depth, food ordering, and persistent spatial maps are **not** implemented. Outdoor turn-by-turn uses **Geoapify** when `GEOAPIFY_API_KEY` is set.
 
 ## Flutter
 

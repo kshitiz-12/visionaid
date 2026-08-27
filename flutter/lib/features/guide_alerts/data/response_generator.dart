@@ -67,8 +67,11 @@ class ResponseGenerator {
     final dir = directionPhrase(snap.direction);
     final dist = metresOrBoxPhrase(snap.distanceMeters, snap.boxProximity);
     final name = _cap(spoken);
+    final sayStop = reached ||
+        _isVehicle(snap.label) && band == PriorityBand.critical ||
+        _isGroundHazard(snap.label) && band == PriorityBand.critical;
 
-    if (reached || band == PriorityBand.critical || risk >= 0.85) {
+    if (sayStop) {
       if (_isVehicle(snap.label)) {
         return hindi ? 'रुकिए. गाड़ी $dir.' : 'Stop. Vehicle $dir.';
       }

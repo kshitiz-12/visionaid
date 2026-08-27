@@ -156,6 +156,12 @@ class GuideAlertEngine {
     final safety = scored.where((s) => s.announcement?.safetyOverride == true).toList();
     if (safety.isNotEmpty) {
       final first = safety.first.announcement!;
+      if (_tooSoon(now, safety: true)) {
+        return FrameAlertResult(announcements: const [], debugLines: debug);
+      }
+      if (first.spoken == _lastSpokenLine && _lastSpokenLine.isNotEmpty) {
+        return FrameAlertResult(announcements: const [], debugLines: debug);
+      }
       _commit(first, safety.first, now);
       return FrameAlertResult(announcements: [first], debugLines: debug);
     }
@@ -180,9 +186,7 @@ class GuideAlertEngine {
     if (!first.safetyOverride && _tooSoon(now)) {
       return FrameAlertResult(announcements: const [], debugLines: debug);
     }
-    if (!first.safetyOverride &&
-        first.spoken == _lastSpokenLine &&
-        _lastSpokenLine.isNotEmpty) {
+    if (first.spoken == _lastSpokenLine && _lastSpokenLine.isNotEmpty) {
       return FrameAlertResult(announcements: const [], debugLines: debug);
     }
     _commit(first, eligible.first, now);
@@ -203,12 +207,15 @@ class GuideAlertEngine {
     );
   }
 
-  bool _tooSoon(DateTime now) {
+  bool _tooSoon(DateTime now, {bool safety = false}) {
     final last = _lastAnySpeech;
     if (last == null) {
       return false;
     }
-    return now.difference(last) < config.minGapBetweenSpeech;
+    final gap = safety
+        ? Duration(milliseconds: (config.minGapBetweenSpeech.inMilliseconds * 0.65).round())
+        : config.minGapBetweenSpeech;
+    return now.difference(last) < gap;
   }
 
   _Ranked _scoreOne({
@@ -515,7 +522,8 @@ class GuideAlertEngine {
         path >= 0.70 &&
         (movement == MovementState.approaching || movement == MovementState.crossingPath);
     final stairsClose = risk >= 0.85 && path >= 0.70 && close;
-    final obstacleClose = path >= 0.95 && close && risk >= 0.80;
+    final obstacleClose =
+        path >= 0.95 && close && risk >= 0.85 && boxProximity >= 0.55;
     return vehicleRush || stairsClose || obstacleClose;
   }
 
@@ -660,6 +668,9 @@ class GuideAlertEngine {
   }
 
   String _key(GuideObjectSnapshot snap) {
+    if (snap.trackingId != null) {
+      return 'id-${snap.trackingId}';
+    }
     final label = snap.label.trim().toLowerCase();
     final x = snap.centerX;
     final side = x == null

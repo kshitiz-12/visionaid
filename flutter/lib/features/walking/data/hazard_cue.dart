@@ -8,6 +8,7 @@ class HazardCue {
   final AudioPlayer _player;
   DateTime? _last;
   bool _ready = false;
+  bool _released = false;
 
   Future<void> _ensurePlayer() async {
     if (_ready) {
@@ -34,12 +35,55 @@ class HazardCue {
     _ready = true;
   }
 
-  Future<void> pingIfWithinMetre(double? metres) async {
-    if (_released || metres == null || metres > 1.0) {
+  /// Interval for target-search beeps (ms). Closer + more centered → faster.
+  static int targetIntervalMs({
+    required double? metres,
+    required double centerX,
+  }) {
+    if (metres == null) {
+      return 1600;
+    }
+    final closeness = (1.0 - (metres / 3.2).clamp(0.0, 1.0));
+    final centered = (1.0 - ((centerX - 0.5).abs() / 0.5).clamp(0.0, 1.0));
+    final score = 0.55 * closeness + 0.45 * centered;
+    return (1550 - score * 1250).round().clamp(280, 1550);
+  }
+
+  Future<void> pingIfWithinMetre(double? metres, {bool pathBlocked = false}) async {
+    if (_released || metres == null) {
       return;
     }
+    final range = pathBlocked ? 1.0 : 0.85;
+    if (metres > range) {
+      return;
+    }
+    await _ping(
+      interval: const Duration(milliseconds: 1200),
+      strongHaptic: metres <= 0.6,
+    );
+  }
+
+  /// Find-mode cue: beep rate rises as the target nears the frame center.
+  Future<void> pingForTarget({
+    required double? metres,
+    required double centerX,
+  }) async {
+    if (_released || metres == null || metres > 4.5) {
+      return;
+    }
+    final ms = targetIntervalMs(metres: metres, centerX: centerX);
+    await _ping(
+      interval: Duration(milliseconds: ms),
+      strongHaptic: metres <= 0.9 && (centerX - 0.5).abs() < 0.18,
+    );
+  }
+
+  Future<void> _ping({
+    required Duration interval,
+    required bool strongHaptic,
+  }) async {
     final now = DateTime.now();
-    if (_last != null && now.difference(_last!) < const Duration(milliseconds: 750)) {
+    if (_last != null && now.difference(_last!) < interval) {
       return;
     }
     _last = now;
@@ -51,12 +95,10 @@ class HazardCue {
     } catch (_) {
       await SystemSound.play(SystemSoundType.click);
     }
-    if (metres <= 0.6) {
+    if (strongHaptic) {
       await HapticFeedback.vibrate();
     }
   }
-
-  bool _released = false;
 
   Future<void> dispose() async {
     if (_released) {

@@ -49,6 +49,7 @@ class VoiceRepositoryImpl implements VoiceRepository {
   String _legacyIntentName(IntentType type) => switch (type) {
         IntentType.emergency => 'emergency',
         IntentType.navigation => 'navigation',
+        IntentType.routeNavigate => 'route_navigate',
         IntentType.readText => 'read_text',
         IntentType.findObject => 'find_object',
         IntentType.sceneDescribe => 'scene_describe',

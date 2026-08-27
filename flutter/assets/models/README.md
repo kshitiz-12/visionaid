@@ -4,6 +4,8 @@
 
 - `efficientdet_lite0.tflite` — ML Kit fallback (COCO-style everyday objects).
 - `visionaid_custom.names` — class list for the fine-tuned detector (order is fixed).
+- `visionaid_custom.tflite` — optional custom detector (drop-in).
+- `midas_small.tflite` — optional MiDaS depth (drop-in; see `ml/depth/README.md`).
 
 Live walking uses Ultralytics **YOLO** (`yolo26s` by default). If you drop a trained
 `visionaid_custom.tflite` into this folder and rebuild the APK, the app loads it

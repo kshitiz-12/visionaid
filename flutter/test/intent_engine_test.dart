@@ -22,6 +22,12 @@ void main() {
     expect(find.target, 'chair');
   });
 
+  test('find my purse extracts purse for live target search', () async {
+    final find = await engine.classify('Find my purse');
+    expect(find.type, IntentType.findObject);
+    expect(find.target, 'purse');
+  });
+
   test('parses call by name as communication call', () async {
     final intent = await engine.classify('Call Harry');
     expect(intent.type, IntentType.communication);

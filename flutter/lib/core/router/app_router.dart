@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/authentication/presentation/pages/settings_page.dart';
 import '../../features/authentication/presentation/pages/splash_page.dart';
 import '../../features/authentication/presentation/pages/voice_home_page.dart';
+import '../../features/navigation/presentation/pages/outdoor_route_page.dart';
 import '../../features/onboarding/presentation/pages/language_page.dart';
 import '../../features/onboarding/presentation/pages/setup_page.dart';
 import '../../features/vision/presentation/pages/live_vision_page.dart';
@@ -51,6 +52,12 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/live',
         builder: (context, state) => LiveVisionPage(
           findTarget: state.uri.queryParameters['target'] ?? '',
+        ),
+      ),
+      GoRoute(
+        path: '/route',
+        builder: (context, state) => OutdoorRoutePage(
+          destination: state.uri.queryParameters['dest'] ?? '',
         ),
       ),
       GoRoute(

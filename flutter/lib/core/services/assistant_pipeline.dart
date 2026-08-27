@@ -131,6 +131,13 @@ class AssistantPipeline {
       case IntentType.findObject:
       case IntentType.sceneDescribe:
         return _runVisionThenChat(intent, onSentence: onSentence);
+      case IntentType.routeNavigate:
+        return PipelineResult(
+          intent: intent,
+          spokenReply: intent.target.isEmpty
+              ? 'Where should I take you?'
+              : 'Opening outdoor route to ${intent.target}.',
+        );
       case IntentType.cancel:
         return PipelineResult(intent: intent, spokenReply: 'Okay, cancelled.');
     }

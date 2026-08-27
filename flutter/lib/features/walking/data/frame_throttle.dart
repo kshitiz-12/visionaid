@@ -1,8 +1,8 @@
-/// Caps Look Ahead ML to about 5 FPS while [_busyFrame] still drops stacked work.
+/// Caps Look Ahead ML. Interval can change for motion-adaptive FPS.
 class FrameThrottle {
   FrameThrottle({this.minIntervalMs = 200});
 
-  final int minIntervalMs;
+  int minIntervalMs;
   int _lastAcceptedMs = 0;
 
   bool shouldSkip({required bool busy, required int nowMs}) {

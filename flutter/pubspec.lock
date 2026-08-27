@@ -776,6 +776,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.9.1"
+  quiver:
+    dependency: transitive
+    description:
+      name: quiver
+      sha256: ea0b925899e64ecdfbf9c7becb60d5b50e706ade44a85b2363be2a22d88117d2
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.2.2"
   realtime_client:
     dependency: transitive
     description:
@@ -792,6 +800,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.6.1"
+  sensors_plus:
+    dependency: "direct main"
+    description:
+      name: sensors_plus
+      sha256: "89e2bfc3d883743539ce5774a2b93df61effde40ff958ecad78cd66b1a8b8d52"
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.1.2"
+  sensors_plus_platform_interface:
+    dependency: transitive
+    description:
+      name: sensors_plus_platform_interface
+      sha256: "9e12a92569bf14ae04b2f086c3e087177a47e527b7666ae1bbe5f70f8450ab19"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.2"
   shared_preferences:
     dependency: "direct main"
     description:
@@ -981,6 +1005,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.6"
+  tflite_flutter:
+    dependency: "direct main"
+    description:
+      name: tflite_flutter
+      sha256: "0bba9040d8decda0960d7abf8eabf32243bf092bc7d0084e8e19681866b0bdbe"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.12.1"
   typed_data:
     dependency: transitive
     description:

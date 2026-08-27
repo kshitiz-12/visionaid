@@ -34,9 +34,10 @@ class TrackedObstacle {
 }
 
 class WalkingTracker {
-  WalkingTracker({this.iouThreshold = 0.28});
+  WalkingTracker({this.iouThreshold = 0.22, this.trackTtlMs = 1400});
 
   final double iouThreshold;
+  final int trackTtlMs;
   final Map<int, TrackedObstacle> _tracks = {};
   int _nextId = 1;
 
@@ -111,7 +112,7 @@ class WalkingTracker {
     }
 
     _tracks.removeWhere(
-      (id, t) => now.difference(t.lastSeen) > const Duration(milliseconds: 900),
+      (id, t) => now.difference(t.lastSeen) > Duration(milliseconds: trackTtlMs),
     );
     return _tracks.values.toList();
   }
@@ -162,13 +163,13 @@ class WalkingTracker {
       return MovementState.unknown;
     }
     final delta = previousMetres - metres;
-    if (delta > 0.35) {
+    if (delta > 0.22) {
       return MovementState.approaching;
     }
-    if (delta < -0.35) {
+    if (delta < -0.22) {
       return MovementState.movingAway;
     }
-    if (delta.abs() < 0.12) {
+    if (delta.abs() < 0.10) {
       return MovementState.staticState;
     }
     return MovementState.moving;

@@ -15,6 +15,11 @@ class AppConfig {
   static bool get isDebugMode =>
       _get('DEBUG_MODE', 'true').toLowerCase() != 'false';
 
+  static String get geoapifyApiKey => _get('GEOAPIFY_API_KEY', '');
+
+  static bool get isGeoapifyConfigured =>
+      geoapifyApiKey.isNotEmpty && !geoapifyApiKey.contains('YOUR_');
+
   static bool get isSupabaseConfigured =>
       supabaseUrl.isNotEmpty &&
       supabaseAnonKey.isNotEmpty &&
