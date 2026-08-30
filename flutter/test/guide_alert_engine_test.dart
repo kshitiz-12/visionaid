@@ -54,7 +54,7 @@ void main() {
       ),
     );
     expect(score, closeTo(73.3, 0.05));
-    expect(scoring.bandFor(score), PriorityBand.announce);
+    expect(scoring.bandFor(score), PriorityBand.highPriority);
   });
 
   test('approaching vehicle example ≈ 77.15 HIGH PRIORITY', () {
@@ -136,12 +136,22 @@ void main() {
 
   test('repeated object → cooldown suppression', () {
     var t = DateTime(2026, 1, 1, 12, 0, 0);
-    final engine = GuideAlertEngine(clock: () => t);
+    final engine = GuideAlertEngine(
+      config: const GuideConfig(safetyConfirmationFrames: 1),
+      clock: () => t,
+    );
     final objects = [
-      centerObject(label: 'chair', confidence: 0.95, meters: 0.8, id: 7),
+      centerObject(
+        label: 'car',
+        confidence: 0.85,
+        movement: MovementState.approaching,
+        meters: 1.0,
+        id: 7,
+      ),
     ];
-    final first = pump(engine, objects: objects, mode: GuideMode.liveGuide, frames: 2);
+    final first = pump(engine, objects: objects, mode: GuideMode.liveGuide, frames: 1);
     expect(first, isNotEmpty);
+    expect(first.first.safetyOverride, isTrue);
     t = t.add(const Duration(milliseconds: 200));
     final again = engine.evaluateSnapshots(
       snapshots: objects,
@@ -150,9 +160,12 @@ void main() {
     expect(again.announcements, isEmpty);
   });
 
-  test('object becomes closer → new announcement', () {
+  test('object becomes closer → new safety announcement', () {
     var t = DateTime(2026, 1, 1, 12, 0, 0);
-    final engine = GuideAlertEngine(clock: () => t);
+    final engine = GuideAlertEngine(
+      config: const GuideConfig(safetyConfirmationFrames: 1),
+      clock: () => t,
+    );
     final far = [
       GuideObjectSnapshot(
         label: 'car',
@@ -184,14 +197,17 @@ void main() {
       mode: GuideMode.liveGuide,
     );
     expect(next.announcements, isNotEmpty);
+    expect(next.announcements.first.safetyOverride, isTrue);
   });
 
   test('find my purse → target match 1.0', () {
     final search = TargetSearchService(config);
     expect(search.match('purse', 'purse'), 1.0);
-    expect(search.match('handbag', 'purse'), 0.90);
+    expect(search.match('handbag', 'purse'), 1.0);
     expect(search.match('backpack', 'purse'), 0.50);
     expect(search.match('chair', 'purse'), 0.00);
+    expect(search.match('shoe', 'shoes'), 1.0);
+    expect(search.match('footwear', 'my shoes'), greaterThan(0.8));
   });
 
   test('target score >= 75 + confirmation → FOUND', () {
@@ -289,8 +305,10 @@ void main() {
     expect(spoken.first.safetyOverride, isTrue);
   });
 
-  test('multiple objects → highest priority first', () {
-    final engine = GuideAlertEngine();
+  test('multiple objects → safety hazard wins in live guide', () {
+    final engine = GuideAlertEngine(
+      config: const GuideConfig(safetyConfirmationFrames: 1),
+    );
     final objects = [
       centerObject(label: 'bottle', confidence: 0.99, id: 1, meters: 3),
       centerObject(label: 'chair', confidence: 0.95, id: 2, meters: 0.8),
@@ -298,6 +316,16 @@ void main() {
     ];
     final spoken = pump(engine, objects: objects, mode: GuideMode.liveGuide, frames: 1);
     expect(spoken, isNotEmpty);
+    expect(spoken.first.safetyOverride, isTrue);
     expect(spoken.first.label, 'stairs');
+  });
+
+  test('live guide suppresses non-safety ambient chatter', () {
+    final engine = GuideAlertEngine();
+    final objects = [
+      centerObject(label: 'chair', confidence: 0.95, meters: 0.8, id: 2),
+    ];
+    final spoken = pump(engine, objects: objects, mode: GuideMode.liveGuide, frames: 3);
+    expect(spoken, isEmpty);
   });
 }

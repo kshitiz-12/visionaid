@@ -9,6 +9,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../../../core/config/app_config.dart';
+import '../../../../core/providers/agent_providers.dart';
 import '../../../../core/providers/pipeline_providers.dart';
 import '../../../../core/providers/voice_providers.dart';
 import '../../../../core/services/sentence_speech_queue.dart';
@@ -16,6 +18,9 @@ import '../../../../core/services/spoken_confirm.dart';
 import '../../../../core/services/user_prefs.dart';
 import '../../../../core/widgets/multi_tap_tracker.dart';
 import '../../../../core/widgets/two_finger_down.dart';
+import '../../../../services/agent_voice_dispatcher.dart';
+import '../../../../services/intent_service.dart';
+import '../../../../services/priority_audio.dart';
 import '../../../communication/domain/contact_matcher.dart';
 import '../../../intent/domain/entities/user_intent.dart';
 import '../../../voice/presentation/widgets/voice_command_button.dart';
@@ -106,6 +111,7 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
     final lang = AppLanguage.fromCode(await UserPrefs.getLanguageCode());
     final name = await UserPrefs.getName();
     await ref.read(textToSpeechProvider).setLocale(lang.ttsLocale);
+    unawaited(ref.read(speechToTextProvider).initialize());
 
     final message = lang.code == 'hi'
         ? (heard
@@ -187,8 +193,8 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
     try {
       await _sentences.stop();
       await tts.stop();
-      unawaited(ref.read(companionClientProvider).wake());
-      await Future<void>.delayed(const Duration(milliseconds: 220));
+      // Let speaker/mic hand off after any prior speech.
+      await Future<void>.delayed(const Duration(milliseconds: 450));
       final spoken = await stt.listen(localeId: lang.sttLocale);
       if (!mounted) {
         return;
@@ -267,7 +273,23 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       for (var i = 0; i < _picks.length; i++) '${i + 1}: ${_picks[i].displayName}',
     ].join('. ');
     await _say('I found ${_picks.length} matches. $listed. Say 1, 2, or 3.');
+    unawaited(_autoListenAfterPrompt());
     return false;
+  }
+
+  /// After contact/emergency prompts, open the mic without requiring a tap.
+  Future<void> _autoListenAfterPrompt() async {
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    if (!mounted || _closing) {
+      return;
+    }
+    if (_dialog != _Dialog.needPick && _dialog != _Dialog.needConfirm) {
+      return;
+    }
+    if (_busy || _listening) {
+      return;
+    }
+    await _listenAndHandle();
   }
 
   Future<void> _dispatchMessage() async {
@@ -317,6 +339,7 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       await _say(
         'Send this ${_channelLabel()} to ${_chosen!.displayName}: $_body. Say yes or no.',
       );
+      unawaited(_autoListenAfterPrompt());
       return;
     }
     _dialog = _Dialog.needBody;
@@ -344,19 +367,120 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       return;
     }
 
-    final intent = await ref.read(intentEngineProvider).classify(spokenText);
+    if (_dialog != _Dialog.idle) {
+      await _handleDialogTurn(spokenText);
+      return;
+    }
 
+    final legacy = await ref.read(intentEngineProvider).classify(spokenText);
+
+    // Offline safety only — quit/cancel must work without Gemini.
+    switch (legacy.type) {
+      case IntentType.quit:
+      case IntentType.cancel:
+        await _handleLegacyIntent(legacy, spokenText);
+        return;
+      default:
+        break;
+    }
+
+    // Dynamic LLM intent — no regex expansion for find/call/follow-me.
+    try {
+      if (AppConfig.isGeminiConfigured) {
+        await ref.read(spatialAgentReadyProvider.future);
+        final agent =
+            await ref.read(intentServiceProvider).parseSpeech(spokenText);
+        if (agent.type == AgentIntentType.rateLimited) {
+          final line = agent.spokenHint.isNotEmpty
+              ? agent.spokenHint
+              : 'API quota limit reached. Please try again in a moment.';
+          await _say(line, alert: true);
+          return;
+        }
+        final dispatcher = AgentVoiceDispatcher(
+          db: ref.read(spatialDbProvider),
+          nodes: ref.read(activeNodeStoreProvider),
+          memory: ref.read(memoryTrackerProvider),
+          imu: ref.read(imuTrackerProvider),
+          audio: ref.read(priorityAudioProvider),
+          onStatus: (status) {
+            if (mounted) {
+              setState(() {
+                _status = status;
+                _isAlert = false;
+              });
+            }
+          },
+          enqueueAmbient: _enqueueAmbient,
+          placeEmergencyCall: () =>
+              ref.read(emergencyServiceProvider).placeCall(contactName: ''),
+          callNamedContact: (displayName) async {
+            final lookup =
+                await ref.read(emergencyServiceProvider).lookup(displayName);
+            if (lookup.permissionDenied) {
+              return 'I need contacts permission to find people. Enable Contacts in settings.';
+            }
+            if (lookup.matches.isEmpty) {
+              return 'I could not find $displayName in your phone contacts.';
+            }
+            final exact = lookup.matches.firstWhere(
+              (c) =>
+                  c.displayName.trim().toLowerCase() ==
+                  displayName.trim().toLowerCase(),
+              orElse: () => lookup.matches.first,
+            );
+            return ref.read(emergencyServiceProvider).callContact(exact);
+          },
+        );
+        final handled = await dispatcher.dispatch(
+          agent,
+          context: mounted ? context : null,
+        );
+        if (handled) {
+          return;
+        }
+        // GENERAL_QA only — intentional companion chat, never failed finds.
+        if (agent.type == AgentIntentType.generalQa) {
+          await _handleLegacyIntent(legacy, spokenText);
+        }
+        return;
+      }
+    } on IntentServiceException {
+      await _say(
+        'I could not understand that right now. Please try again.',
+        alert: true,
+      );
+      return;
+    }
+
+    // Gemini not configured: offline legacy only (no cloud dump for find).
+    if (legacy.type == IntentType.findObject ||
+        legacy.type == IntentType.navigation ||
+        legacy.type == IntentType.emergency ||
+        legacy.type == IntentType.communication ||
+        legacy.type == IntentType.routeNavigate ||
+        legacy.type == IntentType.readText) {
+      await _handleLegacyIntent(legacy, spokenText);
+      return;
+    }
+    await _say(
+      'Voice assistant needs Gemini configured in settings. '
+      'For find or call, set GEMINI_API_KEY, then try again.',
+      alert: true,
+    );
+  }
+
+  Future<void> _handleDialogTurn(String spokenText) async {
+    final intent = await ref.read(intentEngineProvider).classify(spokenText);
     if (intent.type == IntentType.quit) {
       await _quit();
       return;
     }
-
     if (intent.type == IntentType.cancel) {
       _resetDialog();
       await _say('Okay, cancelled.');
       return;
     }
-
     if (_dialog == _Dialog.needName) {
       _queryName = spokenText.trim();
       if (_channel == CommAction.call) {
@@ -373,11 +497,11 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       }
       return;
     }
-
     if (_dialog == _Dialog.needPick) {
       final index = SpokenConfirm.choiceIndex(spokenText, _picks.length);
       if (index == null) {
-        await _say('Please say 1 or 2 to pick the contact.');
+        await _say('Please say 1, 2, or 3 to pick the contact.');
+        unawaited(_autoListenAfterPrompt());
         return;
       }
       _chosen = _picks[index];
@@ -386,10 +510,10 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       } else {
         _dialog = _Dialog.needBody;
         await _say('What should I say to ${_chosen!.displayName}?');
+        unawaited(_autoListenAfterPrompt());
       }
       return;
     }
-
     if (_dialog == _Dialog.needBody) {
       _body = spokenText.trim();
       if (_body.isEmpty) {
@@ -402,7 +526,6 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       );
       return;
     }
-
     if (_dialog == _Dialog.needConfirm) {
       if (SpokenConfirm.isYes(spokenText)) {
         await _dispatchMessage();
@@ -412,9 +535,39 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       } else {
         await _say('Please say yes to send, or no to cancel.');
       }
+    }
+  }
+
+  Future<void> _enqueueAmbient(String text) async {
+    if (!mounted) {
       return;
     }
+    setState(() {
+      _status = text;
+      _isAlert = false;
+    });
+    try {
+      await ref.read(priorityAudioProvider).enqueue(
+            PriorityUtterance(
+              tier: AudioPriorityTier.ambient,
+              text: text,
+            ),
+          );
+    } on PriorityAudioException {
+      await ref.read(textToSpeechProvider).speak(text, natural: true);
+    }
+  }
 
+  Future<void> _handleLegacyIntent(UserIntent intent, String spokenText) async {
+    if (intent.type == IntentType.quit) {
+      await _quit();
+      return;
+    }
+    if (intent.type == IntentType.cancel) {
+      _resetDialog();
+      await _say('Okay, cancelled.');
+      return;
+    }
     if (intent.type == IntentType.emergency) {
       final result = await ref.read(emergencyServiceProvider).placeCall(
             contactName: intent.contactName,
@@ -422,7 +575,6 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       await _say(result, alert: true);
       return;
     }
-
     if (intent.type == IntentType.communication) {
       if (intent.commAction == CommAction.sms ||
           intent.commAction == CommAction.whatsapp) {
@@ -432,10 +584,6 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       await _startCallFlow(intent);
       return;
     }
-
-    final liveGuide = intent.type == IntentType.navigation ||
-        intent.type == IntentType.findObject;
-
     if (intent.type == IntentType.routeNavigate) {
       if (!mounted) {
         return;
@@ -448,19 +596,13 @@ class _VoiceHomePageState extends ConsumerState<VoiceHomePage>
       context.push('/route?dest=${Uri.encodeQueryComponent(dest)}');
       return;
     }
-
-    if (liveGuide) {
-      if (!mounted) {
-        return;
-      }
-      if (intent.type == IntentType.findObject &&
-          intent.target.trim().isEmpty) {
-        await _say('What should I look for? Say find my purse, or find the chair.');
-        return;
-      }
+    if (intent.type == IntentType.findObject ||
+        intent.type == IntentType.navigation) {
       final target = Uri.encodeQueryComponent(intent.target.trim());
       final path = target.isEmpty ? '/live' : '/live?target=$target';
-      context.push(path);
+      if (mounted) {
+        context.push(path);
+      }
       return;
     }
 

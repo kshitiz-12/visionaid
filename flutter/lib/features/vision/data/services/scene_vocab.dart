@@ -33,6 +33,67 @@ class SceneVocab {
     'room',
     'ceiling',
     'floor',
+    // Material tags — imprecise ambient loops ("metal ahead").
+    'metal',
+    'plastic',
+    'textile',
+    'fabric',
+    'leather',
+    'wood',
+    'wooden',
+    'rubber',
+    'glass',
+    'concrete',
+    'asphalt',
+    'material',
+    'texture',
+    'surface',
+    // Image-labeler junk — never speak.
+    'sky',
+    'cloud',
+    'clouds',
+    'monochrome',
+    'grayscale',
+    'greyscale',
+    'gray',
+    'grey',
+    'outdoor',
+    'landscape',
+    'horizon',
+    'darkness',
+    'light',
+    'lighting',
+    'shadow',
+    'shadows',
+    'structure',
+    'empty',
+    'space',
+    'area',
+    'background',
+    'foreground',
+    'chrome',
+    'selfie',
+    'portrait',
+    'close-up',
+    'close up',
+    'macro',
+    'blur',
+    'blurred',
+    'noise',
+    'pixel',
+    'pixels',
+  };
+
+  /// Outdoor vehicle classes — frequent indoor false positives.
+  static const outdoorVehicles = {
+    'car',
+    'truck',
+    'bus',
+    'vehicle',
+    'motorcycle',
+    'bicycle',
+    'bike',
+    'automobile',
   };
 
   static const _aliases = <String, String>{
@@ -177,6 +238,17 @@ class SceneVocab {
     'refrigerator': 'fridge',
     'fridge': 'fridge',
     'microwave': 'microwave',
+    'shoe': 'shoes',
+    'shoes': 'shoes',
+    'footwear': 'shoes',
+    'sneaker': 'shoes',
+    'sneakers': 'shoes',
+    'boot': 'shoes',
+    'boots': 'shoes',
+    'sandal': 'shoes',
+    'sandals': 'shoes',
+    'slipper': 'shoes',
+    'slippers': 'shoes',
   };
 
   static String normalize(String raw) {
@@ -191,10 +263,33 @@ class SceneVocab {
     final keys = _aliases.keys.toList()
       ..sort((a, b) => b.length.compareTo(a.length));
     for (final key in keys) {
-      if (t.contains(key)) {
+      if (_aliasMatches(t, key)) {
         return _aliases[key]!;
       }
     }
     return t;
+  }
+
+  /// Word-boundary alias match — avoids "scarf" → car, "cartoon" → car, etc.
+  static bool _aliasMatches(String text, String key) {
+    if (text == key) {
+      return true;
+    }
+    final padded = ' $text ';
+    final needle = ' $key ';
+    return padded.contains(needle);
+  }
+
+  static bool isOutdoorVehicle(String label) {
+    final n = normalize(label);
+    return n.isNotEmpty && outdoorVehicles.contains(n);
+  }
+
+  static bool isVisionNoise(String label) {
+    final n = label.trim().toLowerCase().replaceAll('_', ' ');
+    if (n.isEmpty || noise.contains(n)) {
+      return true;
+    }
+    return n == 'screen' || n == 'furniture' || n == 'kitchen';
   }
 }

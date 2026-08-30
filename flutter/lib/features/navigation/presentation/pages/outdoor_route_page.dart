@@ -8,12 +8,12 @@ import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
-import '../../../core/providers/voice_providers.dart';
-import '../../../core/services/research_metrics.dart';
-import '../../../core/services/user_prefs.dart';
-import '../../../core/widgets/multi_tap_tracker.dart';
-import '../../../core/widgets/two_finger_down.dart';
-import '../data/outdoor_directions_service.dart';
+import '../../../../core/providers/voice_providers.dart';
+import '../../../../core/services/research_metrics.dart';
+import '../../../../core/services/user_prefs.dart';
+import '../../../../core/widgets/multi_tap_tracker.dart';
+import '../../../../core/widgets/two_finger_down.dart';
+import '../../data/outdoor_directions_service.dart';
 
 /// Voice-first outdoor walking directions (Google Directions API).
 class OutdoorRoutePage extends ConsumerStatefulWidget {

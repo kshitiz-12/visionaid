@@ -97,7 +97,7 @@ class AppLanguage {
   final String ttsLocale;
 
   /// speech_to_text uses underscore locales.
-  String get sttLocale => code == 'hi' ? 'hi_IN' : 'en_US';
+  String get sttLocale => code == 'hi' ? 'hi_IN' : 'en_IN';
 
   static const english = AppLanguage(
     code: 'en',

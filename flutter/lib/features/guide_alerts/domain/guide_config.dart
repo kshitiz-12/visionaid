@@ -3,7 +3,7 @@ class GuideConfig {
   const GuideConfig({
     this.minimumConfidence = 0.38,
     this.veryLowConfidence = 0.22,
-    this.requiredConfirmationFrames = 2,
+    this.requiredConfirmationFrames = 1,
     this.safetyConfirmationFrames = 2,
     this.neutralDistanceScore = 0.30,
     this.corridorLeft = 0.35,
@@ -15,21 +15,21 @@ class GuideConfig {
     this.movementWeight = 10,
     this.intentWeight = 10,
     this.noveltyWeight = 5,
-    this.announceThreshold = 60,
-    this.highPriorityThreshold = 75,
-    this.criticalThreshold = 90,
+    this.announceThreshold = 55,
+    this.highPriorityThreshold = 70,
+    this.criticalThreshold = 88,
     this.lowPriorityThreshold = 40,
     this.targetMatchWeight = 40,
     this.targetConfidenceWeight = 25,
     this.targetDistanceWeight = 15,
     this.targetDirectionWeight = 10,
     this.targetTemporalWeight = 10,
-    this.targetFoundScore = 75,
-    this.targetMinConfidence = 0.70,
-    this.targetWindowFrames = 4,
-    this.targetSearchTimeout = const Duration(seconds: 12),
-    this.announcementCooldown = const Duration(seconds: 10),
-    this.minGapBetweenSpeech = const Duration(milliseconds: 3800),
+    this.targetFoundScore = 55,
+    this.targetMinConfidence = 0.40,
+    this.targetWindowFrames = 2,
+    this.targetSearchTimeout = const Duration(seconds: 45),
+    this.announcementCooldown = const Duration(seconds: 4),
+    this.minGapBetweenSpeech = const Duration(milliseconds: 1400),
     this.debugMode = false,
     this.researchLog = false,
     this.objectRisk = const {
@@ -79,9 +79,27 @@ class GuideConfig {
       'bottle': ['bottle'],
       'phone': ['phone'],
       'person': ['person', 'people'],
-      'laptop': ['laptop', 'computer'],
+      'laptop': ['laptop', 'computer', 'notebook computer', 'laptop computer'],
       'headphones': ['headphones', 'headset', 'earphones'],
       'keys': ['keys', 'key'],
+      'shoes': [
+        'shoes',
+        'shoe',
+        'footwear',
+        'sneaker',
+        'sneakers',
+        'boot',
+        'boots',
+      ],
+      'shoe': [
+        'shoes',
+        'shoe',
+        'footwear',
+        'sneaker',
+        'sneakers',
+        'boot',
+        'boots',
+      ],
       'money': [
         'money',
         'inr_10',
@@ -128,4 +146,19 @@ class GuideConfig {
   final bool researchLog;
   final Map<String, double> objectRisk;
   final Map<String, List<String>> targetAliases;
+
+  /// Live look-ahead: safety-only — no ambient object narration.
+  static const hazardOnly = GuideConfig(
+    minimumConfidence: 0.55,
+    veryLowConfidence: 0.30,
+    announceThreshold: 100,
+    lowPriorityThreshold: 80,
+    announcementCooldown: Duration(seconds: 8),
+    minGapBetweenSpeech: Duration(milliseconds: 3000),
+    requiredConfirmationFrames: 3,
+    safetyConfirmationFrames: 3,
+  );
+
+  /// @deprecated Prefer [hazardOnly] — ambient narration caused indoor false positives.
+  static const liveScene = hazardOnly;
 }

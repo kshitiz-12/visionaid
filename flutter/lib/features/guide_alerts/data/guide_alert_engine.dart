@@ -166,6 +166,11 @@ class GuideAlertEngine {
       return FrameAlertResult(announcements: [first], debugLines: debug);
     }
 
+    // Live walk: silence over wrong object chatter — only safety above speaks.
+    if (mode == GuideMode.liveGuide) {
+      return FrameAlertResult(announcements: const [], debugLines: debug);
+    }
+
     if (mode == GuideMode.targetSearch) {
       final hit = scored.where(
         (s) => s.announcement?.decision == AnnouncementDecision.announceTarget,
@@ -350,6 +355,7 @@ class GuideAlertEngine {
               distanceMeters: snap.distanceMeters,
               proximity: snap.boxProximity,
               reached: reached,
+              boxArea: ResponseGenerator.boxAreaOf(snap),
             ),
             decision: AnnouncementDecision.announceTarget,
             band: PriorityBand.highPriority,
@@ -561,6 +567,14 @@ class GuideAlertEngine {
     double riskS,
   ) {
     final metres = snap.distanceMeters;
+    // Named everyday objects: speak when visible, not only when blocking the path.
+    if (!_unnamed(snap.label) && conf >= 0.30) {
+      if (snap.boxProximity >= 0.05 ||
+          (metres != null && metres <= 4.5) ||
+          distS >= 0.15) {
+        return true;
+      }
+    }
     final close = distS >= 0.55 ||
         snap.boxProximity >= 0.22 ||
         (metres != null && metres <= 2.0);
@@ -611,7 +625,11 @@ class GuideAlertEngine {
         l == 'wall' ||
         l == 'object' ||
         l == 'unknown' ||
-        l == 'something';
+        l == 'something' ||
+        l == 'nearby thing' ||
+        l == 'tall thing' ||
+        l == 'wide thing' ||
+        l == 'low thing';
   }
 
   bool _namedAndClose(

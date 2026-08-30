@@ -45,10 +45,29 @@ void main() {
     expect(ranked.single.displayName, 'Priya Sharma');
   });
 
-  test('fuzzy match handles small speech typos', () {
-    const hari = PhoneContact(displayName: 'Harry Patel', phone: '9991110000');
-    final ranked = ContactMatcher.rank([hari], 'hary');
+  test('papa does not match unrelated pancho da contact', () {
+    const pancho = PhoneContact(displayName: 'Pancho Da', phone: '1111111111');
+    const gorai = PhoneContact(displayName: 'B Gorai', phone: '2222222222');
+    const papa = PhoneContact(displayName: 'Papa', phone: '3333333333');
+    final ranked = ContactMatcher.rank([pancho, gorai, papa], 'papa');
     expect(ranked, isNotEmpty);
-    expect(ranked.first.displayName, 'Harry Patel');
+    expect(ranked.first.displayName, 'Papa');
+  });
+
+  test('papa with no real match returns empty instead of fuzzy noise', () {
+    const pancho = PhoneContact(displayName: 'Pancho Da', phone: '1111111111');
+    const gorai = PhoneContact(displayName: 'B Gorai', phone: '2222222222');
+    final ranked = ContactMatcher.rank([pancho, gorai], 'papa');
+    expect(ranked, isEmpty);
+  });
+
+  test('mummy does not pull Mama or unrelated names via short alias', () {
+    const mama = PhoneContact(displayName: 'Mama', phone: '4440005555');
+    const gorai = PhoneContact(displayName: 'B Gorai', phone: '2222222222');
+    final ranked = ContactMatcher.rank([mama, gorai, mom], 'mummy');
+    expect(ranked.every((c) => c.displayName != 'Mama'), isTrue);
+    expect(ranked.every((c) => c.displayName != 'B Gorai'), isTrue);
+    expect(ranked, isNotEmpty);
+    expect(ranked.first.displayName, 'Mom');
   });
 }

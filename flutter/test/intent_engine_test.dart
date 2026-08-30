@@ -28,6 +28,16 @@ void main() {
     expect(find.target, 'purse');
   });
 
+  test('find laptop without my still opens find mode', () async {
+    final find = await engine.classify('find laptop');
+    expect(find.type, IntentType.findObject);
+    expect(find.target, 'laptop');
+
+    final the = await engine.classify('find the bottle');
+    expect(the.type, IntentType.findObject);
+    expect(the.target, 'bottle');
+  });
+
   test('parses call by name as communication call', () async {
     final intent = await engine.classify('Call Harry');
     expect(intent.type, IntentType.communication);

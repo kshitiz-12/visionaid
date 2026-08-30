@@ -1,3 +1,4 @@
+import '../../../services/memory_tracker.dart';
 import '../domain/guide_config.dart';
 import '../domain/guide_models.dart';
 
@@ -192,26 +193,29 @@ class ObjectPriorityEngine {
     if (r.isEmpty) {
       return 0;
     }
+    // Weak cross-bag matches (not full synonyms).
+    if ((r == 'purse' || r == 'handbag') && d == 'backpack') {
+      return 0.50;
+    }
+    if (r == 'backpack' && (d == 'purse' || d == 'handbag')) {
+      return 0.50;
+    }
+    // Semantic synonym / stem match (system-wide MemoryTracker taxonomy).
+    final semantic = MemoryTracker.semanticMatch(d, r);
+    if (semantic > 0) {
+      return semantic;
+    }
     if (d == r) {
       return 1.0;
     }
     final aliases = config.targetAliases[r] ?? const <String>[];
     if (aliases.contains(d)) {
-      if (d == r) {
-        return 1.0;
-      }
-      return 0.90;
+      return d == r ? 1.0 : 0.90;
     }
     for (final entry in config.targetAliases.entries) {
       if (entry.key == r && entry.value.contains(d)) {
         return d == r ? 1.0 : 0.90;
       }
-    }
-    if (r == 'purse' && d == 'backpack') {
-      return 0.50;
-    }
-    if (r == 'backpack' && (d == 'purse' || d == 'handbag')) {
-      return 0.50;
     }
     return 0.0;
   }

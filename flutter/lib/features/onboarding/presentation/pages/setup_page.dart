@@ -104,6 +104,10 @@ class _SetupPageState extends ConsumerState<SetupPage> {
               : 'I did not catch a valid number. Please say the digits again.';
           setState(() => _status = msg);
           await tts.speak(msg);
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          if (mounted) {
+            await _listen();
+          }
           return;
         }
         _pending = digits;

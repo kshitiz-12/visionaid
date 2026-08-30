@@ -282,12 +282,12 @@ class OutdoorDirectionsService {
     double lat2,
     double lng2,
   ) {
-    final φ1 = lat1 * math.pi / 180;
-    final φ2 = lat2 * math.pi / 180;
-    final Δλ = (lng2 - lng1) * math.pi / 180;
-    final y = math.sin(Δλ) * math.cos(φ2);
-    final x = math.cos(φ1) * math.sin(φ2) -
-        math.sin(φ1) * math.cos(φ2) * math.cos(Δλ);
+    final phi1 = lat1 * math.pi / 180;
+    final phi2 = lat2 * math.pi / 180;
+    final dLambda = (lng2 - lng1) * math.pi / 180;
+    final y = math.sin(dLambda) * math.cos(phi2);
+    final x = math.cos(phi1) * math.sin(phi2) -
+        math.sin(phi1) * math.cos(phi2) * math.cos(dLambda);
     return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
   }
 }

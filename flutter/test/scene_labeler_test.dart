@@ -23,4 +23,21 @@ void main() {
     expect(merged.first.label, 'person');
     expect(merged.first.distance, closeTo(0.8, 0.01));
   });
+
+  test('label-only hits need includeLabelOnly for synthetic boxes', () {
+    const names = [
+      RawDetection(label: 'shoes', confidence: 0.7, distance: 0.5),
+    ];
+    expect(SceneLabeler.merge(const [], names), isEmpty);
+    final withLabels = SceneLabeler.merge(const [], names, includeLabelOnly: true);
+    expect(withLabels, isNotEmpty);
+    expect(withLabels.first.label, 'shoes');
+  });
+
+  test('substring alias false positives are blocked', () {
+    expect(SceneVocab.normalize('scarf'), 'scarf');
+    expect(SceneVocab.normalize('cartoon'), 'cartoon');
+    expect(SceneVocab.normalize('monochrome'), isEmpty);
+    expect(SceneVocab.normalize('sky'), isEmpty);
+  });
 }

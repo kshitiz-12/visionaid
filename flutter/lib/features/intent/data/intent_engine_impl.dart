@@ -49,7 +49,7 @@ class IntentEngineImpl implements IntentEngine {
     ],
     IntentType.findObject: [
       RegExp(
-        r'\b(where\s+is(\s+my|\s+the)?|find\s+my|locate\s+my|look\s+for\s+my)\b',
+        r'\b(where\s+is(\s+my|\s+the)?|find(\s+my|\s+the)?|locate(\s+my|\s+the)?|look\s+for(\s+my|\s+the)?)\b',
       ),
       RegExp(r'\b(मेरा\s+.+\s+कहाँ|कहाँ\s*है\s*(मेरा|मेरी)|ढूँढो|खोजो)\b'),
     ],
@@ -77,7 +77,10 @@ class IntentEngineImpl implements IntentEngine {
     'purse': RegExp(r'\b(purse|handbag|wallet|bag)\b|\bपर्स\b|\bबैग\b'),
     'bottle': RegExp(r'\bbottles?\b|\bबोतल\b'),
     'keys': RegExp(r'\bkeys?\b|\bचाबी\b|\bचाबियाँ\b'),
-    'vehicle': RegExp(r'\b(car|bus|truck|vehicle|bike)\b|\bगाड़ी\b|\bकार\b'),
+      'shoes': RegExp(
+        r'\b(shoes?|footwear|sneakers?|boots?|sandals?)\b|\bजूत[ेा]?\b|\bचप्पल\b',
+      ),
+      'vehicle': RegExp(r'\b(car|bus|truck|vehicle|bike)\b|\bगाड़ी\b|\bकार\b'),
     'stairs': RegExp(r'\bstairs?\b|\bसीढ़ि'),
     'exit': RegExp(r'\bexits?\b|\bनिकास\b'),
   };

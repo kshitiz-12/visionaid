@@ -17,31 +17,47 @@ class ResponseGenerator {
     };
   }
 
-  String metresOrBoxPhrase(double? metres, double proximity) {
+  String metresOrBoxPhrase(
+    double? metres,
+    double proximity, {
+    double? boxArea,
+  }) {
+    if (boxArea != null && boxArea > 0.40) {
+      return hindi ? 'बहुत पास / आपकी गोद में' : 'very close / in your lap';
+    }
     if (metres == null) {
       return distancePhrase(proximity);
     }
+    if (metres < 0.55 || proximity >= 0.55) {
+      return hindi ? 'बहुत पास' : 'very close';
+    }
     if (metres < 0.9) {
-      return hindi ? 'पास' : 'close';
+      return hindi
+          ? 'लगभग ${(metres * 100).round()} सेमी'
+          : 'about ${(metres * 100).round()} centimeters';
     }
-    if (metres < 1.7) {
-      return hindi ? 'एक मीटर' : 'one metre';
+    if (metres < 2.8) {
+      final rounded = (metres * 10).round() / 10.0;
+      final text = rounded == rounded.roundToDouble()
+          ? rounded.toStringAsFixed(0)
+          : rounded.toStringAsFixed(1);
+      final unit = (rounded == 1.0)
+          ? (hindi ? 'मीटर' : 'meter')
+          : (hindi ? 'मीटर' : 'meters');
+      return hindi ? 'लगभग $text $unit' : 'about $text $unit';
     }
-    if (metres < 2.4) {
-      return hindi ? 'दो मीटर' : 'two metres';
-    }
-    return '';
+    return hindi ? 'दूर' : 'farther';
   }
 
   String distancePhrase(double proximity) {
-    if (proximity >= 0.42) {
+    if (proximity >= 0.55) {
+      return hindi ? 'बहुत पास' : 'very close';
+    }
+    if (proximity >= 0.35) {
       return hindi ? 'पास' : 'close';
     }
-    if (proximity >= 0.22) {
-      return hindi ? 'एक मीटर' : 'one metre';
-    }
-    if (proximity >= 0.10) {
-      return hindi ? 'दो मीटर' : 'two metres';
+    if (proximity >= 0.18) {
+      return hindi ? 'थोड़ी दूर' : 'a bit farther';
     }
     return '';
   }
@@ -65,7 +81,11 @@ class ResponseGenerator {
   }) {
     final spoken = _spokenName(snap);
     final dir = directionPhrase(snap.direction);
-    final dist = metresOrBoxPhrase(snap.distanceMeters, snap.boxProximity);
+    final dist = metresOrBoxPhrase(
+      snap.distanceMeters,
+      snap.boxProximity,
+      boxArea: boxAreaOf(snap),
+    );
     final name = _cap(spoken);
     final sayStop = reached ||
         _isVehicle(snap.label) && band == PriorityBand.critical ||
@@ -110,13 +130,18 @@ class ResponseGenerator {
     double? distanceMeters,
     double proximity = 0.2,
     bool reached = false,
+    double? boxArea,
   }) {
     if (reached) {
       return hindi
           ? 'रुकिए. $label मिल गया.'
           : 'Stop. You have reached the $label.';
     }
-    return _line(_cap(label), directionPhrase(direction), metresOrBoxPhrase(distanceMeters, proximity));
+    return _line(
+      _cap(label),
+      directionPhrase(direction),
+      metresOrBoxPhrase(distanceMeters, proximity, boxArea: boxArea),
+    );
   }
 
   String targetNotFound(String label) {
@@ -125,11 +150,59 @@ class ResponseGenerator {
         : "I still don't have the $label. Sweep a little left and right.";
   }
 
+  /// Speaks a rolling inventory of what the camera currently sees.
+  String sceneInventory(List<GuideObjectSnapshot> snaps) {
+    if (snaps.isEmpty) {
+      return '';
+    }
+    final parts = <String>[];
+    final seen = <String>{};
+    for (final snap in snaps) {
+      final key = snap.label.trim().toLowerCase();
+      if (key.isEmpty || !seen.add(key)) {
+        continue;
+      }
+      final name = _cap(_spokenName(snap));
+      final dir = directionPhrase(snap.direction);
+      final dist = metresOrBoxPhrase(
+      snap.distanceMeters,
+      snap.boxProximity,
+      boxArea: boxAreaOf(snap),
+    );
+      if (dist.isEmpty) {
+        parts.add('$name $dir');
+      } else {
+        parts.add('$name $dir, $dist');
+      }
+      if (parts.length >= 5) {
+        break;
+      }
+    }
+    if (parts.isEmpty) {
+      return '';
+    }
+    if (hindi) {
+      return 'दिख रहा है: ${parts.join('. ')}.';
+    }
+    return 'I see ${parts.join('. ')}.';
+  }
+
   String _line(String name, String dir, String dist) {
     if (dist.isEmpty) {
       return '$name, $dir.';
     }
     return '$name, $dir, $dist.';
+  }
+
+  /// Normalized frame coverage of a detection box (0..1).
+  static double? boxAreaOf(GuideObjectSnapshot snap) {
+    final box = snap.boundingBox;
+    if (box == null) {
+      return null;
+    }
+    final w = (box.right - box.left).clamp(0.0, 1.0);
+    final h = (box.bottom - box.top).clamp(0.0, 1.0);
+    return (w * h).clamp(0.0, 1.0);
   }
 
   String _spokenName(GuideObjectSnapshot snap) {

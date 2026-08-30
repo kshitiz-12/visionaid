@@ -8,7 +8,7 @@ import 'scene_vocab.dart';
 class SceneLabeler {
   SceneLabeler()
       : _labeler = ImageLabeler(
-          options: ImageLabelerOptions(confidenceThreshold: 0.14),
+          options: ImageLabelerOptions(confidenceThreshold: 0.32),
         );
 
   final ImageLabeler _labeler;
@@ -17,7 +17,7 @@ class SceneLabeler {
     final labels = await _labeler.processImage(image);
     final named = <RawDetection>[];
     for (final item in labels) {
-      if (item.confidence < 0.14) {
+      if (item.confidence < 0.32) {
         continue;
       }
       final friendly = SceneVocab.normalize(item.label);
@@ -33,7 +33,13 @@ class SceneLabeler {
       );
     }
     named.sort((a, b) => b.confidence.compareTo(a.confidence));
-    return named.take(6).toList();
+    // Prefer concrete objects over weak animal false-positives in labels.
+    return named.where((d) {
+      if ((d.label == 'dog' || d.label == 'cat') && d.confidence < 0.55) {
+        return false;
+      }
+      return true;
+    }).take(6).toList();
   }
 
   Future<List<RawDetection>> labelFile(String path) {
@@ -41,10 +47,14 @@ class SceneLabeler {
   }
 
   /// Boxes give distance; labels give names. Keep both, drop junk "object".
+  ///
+  /// Label-only hits (no box) get a synthetic lower-center box so find-mode
+  /// can still speak direction and drive haptic geiger (e.g. shoes on floor).
   static List<RawDetection> merge(
     List<RawDetection> objects,
-    List<RawDetection> labels,
-  ) {
+    List<RawDetection> labels, {
+    bool includeLabelOnly = false,
+  }) {
     final proximity = objects.isEmpty
         ? 0.45
         : objects.map((o) => o.distance).reduce((a, b) => a > b ? a : b);
@@ -52,32 +62,52 @@ class SceneLabeler {
     final merged = <RawDetection>[];
     final seen = <String>{};
 
-    void add(RawDetection d) {
+    void add(RawDetection d, {required bool fromLabelOnly}) {
       final name = SceneVocab.normalize(d.label);
       if (name.isEmpty || !seen.add(name)) {
         return;
       }
-      merged.add(
-        RawDetection(
-          label: name,
-          confidence: d.confidence,
-          distance: d.distance > 0.05 ? d.distance : proximity,
-          isMoving: d.isMoving,
-          boxWidth: d.boxWidth,
-          boxHeight: d.boxHeight,
-          boxLeft: d.boxLeft,
-          boxTop: d.boxTop,
-          frameWidth: d.frameWidth,
-          frameHeight: d.frameHeight,
-          trackingId: d.trackingId,
-          timestamp: d.timestamp,
-          distanceMeters: d.distanceMeters,
-        ),
+      if (fromLabelOnly && !includeLabelOnly) {
+        return;
+      }
+      var out = RawDetection(
+        label: name,
+        confidence: d.confidence,
+        distance: d.distance > 0.05 ? d.distance : proximity,
+        isMoving: d.isMoving,
+        boxWidth: d.boxWidth,
+        boxHeight: d.boxHeight,
+        boxLeft: d.boxLeft,
+        boxTop: d.boxTop,
+        frameWidth: d.frameWidth,
+        frameHeight: d.frameHeight,
+        trackingId: d.trackingId,
+        timestamp: d.timestamp,
+        distanceMeters: d.distanceMeters,
       );
+      if (out.boxWidth <= 0 || out.boxHeight <= 0) {
+        if (fromLabelOnly) {
+          if (!includeLabelOnly) {
+            return;
+          }
+          // Find-mode only: synthetic lower-center box for floor objects.
+          out = out.copyWith(
+            boxLeft: 0.28,
+            boxTop: 0.55,
+            boxWidth: 0.44,
+            boxHeight: 0.40,
+            frameWidth: 1,
+            frameHeight: 1,
+            distance: proximity.clamp(0.25, 0.65),
+            distanceMeters: out.distanceMeters ?? 1.0,
+          );
+        }
+      }
+      merged.add(out);
     }
 
     for (final o in objects) {
-      add(_namedBox(o, labels));
+      add(_namedBox(o, labels), fromLabelOnly: false);
     }
     for (final l in labels) {
       add(
@@ -86,6 +116,7 @@ class SceneLabeler {
           confidence: l.confidence,
           distance: proximity,
         ),
+        fromLabelOnly: true,
       );
     }
 
@@ -96,7 +127,7 @@ class SceneLabeler {
       }
       return b.distance.compareTo(a.distance);
     });
-    return merged.take(8).toList();
+    return merged.take(12).toList();
   }
 
   static RawDetection _namedBox(RawDetection box, List<RawDetection> labels) {

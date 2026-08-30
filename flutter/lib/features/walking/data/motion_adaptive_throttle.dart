@@ -1,16 +1,14 @@
-import 'dart:async';
-import 'dart:math' as math;
-
-import 'package:sensors_plus/sensors_plus.dart';
-
 import 'frame_throttle.dart';
 
-/// Drops inference when the phone is still; ramps up when the user moves.
+/// Drops inference when the scene is still; ramps up when detections move.
+///
+/// Uses walking-frame motion hints (no accelerometer package) so Android builds
+/// do not need the sensors_plus Gradle classpath download.
 class MotionAdaptiveThrottle {
   MotionAdaptiveThrottle({
-    this.movingIntervalMs = 90,
-    this.stillIntervalMs = 480,
-    this.stillAfter = const Duration(milliseconds: 1600),
+    this.movingIntervalMs = 70,
+    this.stillIntervalMs = 200,
+    this.stillAfter = const Duration(milliseconds: 900),
   }) : _throttle = FrameThrottle(minIntervalMs: movingIntervalMs);
 
   final int movingIntervalMs;
@@ -18,39 +16,36 @@ class MotionAdaptiveThrottle {
   final Duration stillAfter;
 
   final FrameThrottle _throttle;
-  StreamSubscription<UserAccelerometerEvent>? _sub;
   DateTime _lastMove = DateTime.now();
   bool _moving = true;
+  double? _lastAnchorX;
 
   Future<void> start() async {
-    await stop();
-    try {
-      _sub = userAccelerometerEventStream(
-        samplingPeriod: SensorInterval.uiInterval,
-      ).listen((e) {
-        final mag = math.sqrt(e.x * e.x + e.y * e.y + e.z * e.z);
-        if (mag > 1.15) {
-          _lastMove = DateTime.now();
-          if (!_moving) {
-            _moving = true;
-            _throttle.minIntervalMs = movingIntervalMs;
-          }
-        }
-      });
-    } catch (_) {
-      _moving = true;
-      _throttle.minIntervalMs = movingIntervalMs;
+    _lastMove = DateTime.now();
+    _moving = true;
+    _throttle.minIntervalMs = movingIntervalMs;
+  }
+
+  Future<void> stop() async {}
+
+  /// Call each accepted frame with a stable scene anchor (e.g. mean centerX).
+  void noteScene({double? anchorX, bool forcedMove = false}) {
+    if (forcedMove) {
+      _lastMove = DateTime.now();
+      return;
+    }
+    if (anchorX == null) {
+      return;
+    }
+    final prev = _lastAnchorX;
+    _lastAnchorX = anchorX;
+    if (prev != null && (anchorX - prev).abs() >= 0.04) {
+      _lastMove = DateTime.now();
     }
   }
 
-  Future<void> stop() async {
-    await _sub?.cancel();
-    _sub = null;
-  }
-
   bool shouldSkip({required bool busy, required int nowMs}) {
-    final still =
-        DateTime.now().difference(_lastMove) >= stillAfter;
+    final still = DateTime.now().difference(_lastMove) >= stillAfter;
     if (still && _moving) {
       _moving = false;
       _throttle.minIntervalMs = stillIntervalMs;

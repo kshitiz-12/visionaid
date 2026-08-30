@@ -10,7 +10,7 @@ void main() {
   test('door left about a meter, then reached', () {
     expect(
       speech.distancePhrase(0.25),
-      'one metre',
+      'a bit farther',
     );
     expect(
       speech.targetFound(
@@ -18,7 +18,7 @@ void main() {
         direction: GuideDirection.left,
         proximity: 0.25,
       ),
-      'Door, left, one metre.',
+      'Door, left, a bit farther.',
     );
     expect(
       speech.targetFound(
@@ -59,8 +59,8 @@ void main() {
   });
 
   test('metres stay approximate, never millimetre-precise', () {
-    expect(speech.metresOrBoxPhrase(1.037, 0.2), 'one metre');
-    expect(speech.metresOrBoxPhrase(null, 0.25), 'one metre');
+    expect(speech.metresOrBoxPhrase(1.037, 0.2), 'about 1 meter');
+    expect(speech.metresOrBoxPhrase(null, 0.25), 'a bit farther');
   });
 
   test('live lines stay short, no extra objects', () {
@@ -86,7 +86,7 @@ void main() {
         risk: 0.2,
         movement: MovementState.unknown,
       ),
-      'Chair, ahead, one metre.',
+      'Chair, ahead, about 1.1 meters.',
     );
     expect(speech.extras([chair, bottle], skipLabel: 'chair'), isEmpty);
   });
@@ -108,7 +108,7 @@ void main() {
         risk: 0.2,
         movement: MovementState.unknown,
       ),
-      contains('one metre'),
+      contains('about 1.1 meters'),
     );
     expect(
       speech.live(

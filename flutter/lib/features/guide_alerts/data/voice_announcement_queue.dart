@@ -15,13 +15,15 @@ class VoiceAnnouncementQueue {
     final now = DateTime.now();
     if (_lastSpoken == next.spoken &&
         _lastAt != null &&
-        now.difference(_lastAt!) < const Duration(seconds: 4)) {
+        now.difference(_lastAt!) < const Duration(seconds: 2)) {
       return;
     }
     if (_playing) {
-      if (next.safetyOverride || next.speechPriority == SpeechPriority.critical) {
+      if (next.safetyOverride ||
+          next.speechPriority == SpeechPriority.critical ||
+          next.speechPriority == SpeechPriority.high) {
         if (_lastAt != null &&
-            now.difference(_lastAt!) < const Duration(milliseconds: 2200)) {
+            now.difference(_lastAt!) < const Duration(milliseconds: 900)) {
           return;
         }
         await _tts.stop();

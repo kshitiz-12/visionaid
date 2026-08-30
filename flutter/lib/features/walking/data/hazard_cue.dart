@@ -49,17 +49,22 @@ class HazardCue {
     return (1550 - score * 1250).round().clamp(280, 1550);
   }
 
+  /// Walk-mode beep: only when the path is blocked and truly close.
+  /// Interval slows as distance grows so open scenes stay quiet.
   Future<void> pingIfWithinMetre(double? metres, {bool pathBlocked = false}) async {
-    if (_released || metres == null) {
+    if (_released || !pathBlocked || metres == null) {
       return;
     }
-    final range = pathBlocked ? 1.0 : 0.85;
-    if (metres > range) {
+    // Box-size depth often underestimates — keep beeps for imminent only.
+    if (metres > 0.5) {
       return;
     }
+    final intervalMs = metres <= 0.35
+        ? 1000
+        : 1800;
     await _ping(
-      interval: const Duration(milliseconds: 1200),
-      strongHaptic: metres <= 0.6,
+      interval: Duration(milliseconds: intervalMs),
+      strongHaptic: metres <= 0.4,
     );
   }
 

@@ -116,10 +116,26 @@ class SpokenConfirm {
 
   static int? choiceIndex(String spoken, int count) {
     final t = spoken.trim().toLowerCase();
+    // Phonetic / homophone map for short digit replies.
     final ordered = <(RegExp, int)>[
-      (RegExp(r'\b(3|three|third|तीसरा|तीन)\b'), 2),
-      (RegExp(r'\b(2|two|second|दूसरा|दो)\b'), 1),
-      (RegExp(r'\b(1|one|first|पहला|एक)\b'), 0),
+      (
+        RegExp(
+          r'\b(3|three|third|teen|teenh|tree|free|tee|तीसरा|तीन)\b',
+        ),
+        2,
+      ),
+      (
+        RegExp(
+          r'\b(2|two|second|to|too|do|doo|दूसरा|दो)\b',
+        ),
+        1,
+      ),
+      (
+        RegExp(
+          r'\b(1|one|first|won|van|ek|एक|पहला)\b',
+        ),
+        0,
+      ),
     ];
     for (final row in ordered) {
       if (row.$2 < count && row.$1.hasMatch(t)) {
@@ -135,13 +151,24 @@ class SpokenConfirm {
       'zero': '0',
       'oh': '0',
       'one': '1',
+      'won': '1',
+      'van': '1',
+      'ek': '1',
       'two': '2',
+      'to': '2',
+      'too': '2',
+      'do': '2',
       'three': '3',
+      'tree': '3',
+      'free': '3',
+      'teen': '3',
       'four': '4',
+      'for': '4',
       'five': '5',
       'six': '6',
       'seven': '7',
       'eight': '8',
+      'ate': '8',
       'nine': '9',
       'plus': '',
       'शून्य': '0',
@@ -157,7 +184,7 @@ class SpokenConfirm {
       'नौ': '9',
     };
     for (final e in words.entries) {
-      t = t.replaceAll(e.key, ' ${e.value} ');
+      t = t.replaceAll(RegExp('\\b${RegExp.escape(e.key)}\\b'), ' ${e.value} ');
     }
     return t.replaceAll(RegExp(r'[^\d]'), '');
   }

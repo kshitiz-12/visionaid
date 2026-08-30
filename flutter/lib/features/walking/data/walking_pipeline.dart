@@ -79,19 +79,30 @@ class WalkingPipeline {
   }
 
   RawDetection _withMetres(RawDetection d) {
-    if (d.distanceMeters != null) {
-      return d;
-    }
     final fw = d.frameWidth <= 0 ? 1.0 : d.frameWidth;
     final fh = d.frameHeight <= 0 ? 1.0 : d.frameHeight;
     if (d.boxWidth <= 0) {
       return d;
     }
+    final left = d.boxLeft / fw;
+    final top = d.boxTop / fh;
+    final right = (d.boxLeft + d.boxWidth) / fw;
+    final bottom = (d.boxTop + d.boxHeight) / fh;
+    final area =
+        ((right - left).clamp(0.0, 1.0) * (bottom - top).clamp(0.0, 1.0))
+            .clamp(0.0, 1.0);
+    // Laptop-on-lap / filling frame: never invent "1 metre".
+    if (area > 0.40) {
+      return d.copyWith(distanceMeters: 0.35, distance: 0.85);
+    }
+    if (d.distanceMeters != null) {
+      return d;
+    }
     final metres = depth.distanceInRegion(
-      left: d.boxLeft / fw,
-      top: d.boxTop / fh,
-      right: (d.boxLeft + d.boxWidth) / fw,
-      bottom: (d.boxTop + d.boxHeight) / fh,
+      left: left,
+      top: top,
+      right: right,
+      bottom: bottom,
     );
     return d.copyWith(distanceMeters: metres);
   }

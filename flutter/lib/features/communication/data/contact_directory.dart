@@ -1,6 +1,7 @@
 import 'package:flutter_contacts/flutter_contacts.dart';
 
 import '../../../core/services/user_prefs.dart';
+import '../../../services/intent_service.dart';
 import '../domain/contact_matcher.dart';
 
 class ContactDirectory {
@@ -56,9 +57,53 @@ class ContactDirectory {
     return ContactLookup(matches: matches);
   }
 
+  /// Compact catalog for Gemini contact resolution (display names + aliases only).
+  Future<List<ContactRef>> loadPromptCatalog({int maxContacts = 150}) async {
+    final status = await FlutterContacts.permissions.request(PermissionType.read);
+    if (status != PermissionStatus.granted && status != PermissionStatus.limited) {
+      return const [];
+    }
+
+    final all = await FlutterContacts.getAll(
+      properties: {ContactProperty.phone, ContactProperty.name},
+    );
+    final out = <ContactRef>[];
+    for (final contact in all) {
+      if (contact.phones.isEmpty) {
+        continue;
+      }
+      final phone = _bestPhone(contact.phones);
+      if (phone.isEmpty) {
+        continue;
+      }
+      final display = (contact.displayName ?? '').trim();
+      if (display.isEmpty) {
+        continue;
+      }
+      final searchNames = _searchNames(contact, display)
+          .where((n) => n.trim().isNotEmpty && n.trim() != display)
+          .toList();
+      final last4 = phone.length >= 4 ? phone.substring(phone.length - 4) : phone;
+      out.add(
+        ContactRef(
+          displayName: display,
+          searchNames: searchNames,
+          phoneLast4: last4,
+        ),
+      );
+      if (out.length >= maxContacts) {
+        break;
+      }
+    }
+    return out;
+  }
+
   List<String> _searchNames(Contact contact, String display) {
     final out = <String>{display};
     final name = contact.name;
+    if (name == null) {
+      return out.toList();
+    }
     void add(String? value) {
       final t = (value ?? '').trim();
       if (t.isNotEmpty) {
@@ -72,9 +117,11 @@ class ContactDirectory {
     add(name.nickname);
     add(name.prefix);
     add(name.suffix);
-    if (name.first.isNotEmpty && name.last.isNotEmpty) {
-      out.add('${name.first} ${name.last}');
-      out.add('${name.last} ${name.first}');
+    final first = (name.first ?? '').trim();
+    final last = (name.last ?? '').trim();
+    if (first.isNotEmpty && last.isNotEmpty) {
+      out.add('$first $last');
+      out.add('$last $first');
     }
     return out.toList();
   }

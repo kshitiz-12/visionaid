@@ -17,6 +17,16 @@ class AppConfig {
 
   static String get geoapifyApiKey => _get('GEOAPIFY_API_KEY', '');
 
+  /// On-device Gemini (intent engine). Must be set in flutter/.env.
+  static String get geminiApiKey => _get('GEMINI_API_KEY', '');
+
+  /// e.g. gemini-3.6-flash. Defaults to current Flash if unset in .env.
+  static String get geminiModel =>
+      _get('GEMINI_MODEL', 'gemini-3.6-flash');
+
+  static bool get isGeminiConfigured =>
+      geminiApiKey.isNotEmpty && !geminiApiKey.contains('YOUR_');
+
   static bool get isGeoapifyConfigured =>
       geoapifyApiKey.isNotEmpty && !geoapifyApiKey.contains('YOUR_');
 

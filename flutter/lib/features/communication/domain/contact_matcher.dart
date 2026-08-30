@@ -27,7 +27,7 @@ class ContactMatcher {
 
   /// Hindi / English nicknames and relationship terms that should match each other.
   static const _aliasGroups = <List<String>>[
-    ['mummy', 'mom', 'mother', 'ma', 'mum', 'mummi', 'mammi', 'amma', 'ammi', 'मम्मी', 'माँ', 'मां', 'अम्मा', 'अम्मी'],
+    ['mummy', 'mom', 'mother', 'mum', 'mummi', 'mammi', 'amma', 'ammi', 'मम्मी', 'माँ', 'मां', 'अम्मा', 'अम्मी'],
     ['papa', 'dad', 'daddy', 'father', 'baba', 'abba', 'पापा', 'बाप', 'पिता', 'बाबा'],
     ['didi', 'sister', 'sis', 'दीदी', 'बहन'],
     ['bhai', 'brother', 'bro', 'भाई'],
@@ -45,16 +45,44 @@ class ContactMatcher {
       return 0;
     }
 
+    final family = _familyGroupContaining(query);
     var best = 0;
     final names = <String>{displayName, ...extraNames};
     for (final raw in names) {
       for (final name in _forms(raw)) {
+        if (family != null) {
+          // Relationship calls: exact alias membership only (mummy≠Mama).
+          if (family.contains(name) || family.contains(_norm(raw))) {
+            best = best > 100 ? best : 100;
+          }
+          for (final part in name.split(' ')) {
+            if (family.contains(part)) {
+              best = best > 95 ? best : 95;
+            }
+          }
+          continue;
+        }
         for (final q in qForms) {
           best = best > _pairScore(name, q) ? best : _pairScore(name, q);
         }
       }
     }
     return best;
+  }
+
+  static Set<String>? _familyGroupContaining(String query) {
+    final base = _norm(query);
+    if (base.isEmpty) {
+      return null;
+    }
+    for (final group in _aliasGroups) {
+      final normalized = group.map(_norm).where((s) => s.isNotEmpty).toSet();
+      if (normalized.contains(base) ||
+          base.split(' ').any(normalized.contains)) {
+        return normalized;
+      }
+    }
+    return null;
   }
 
   static List<PhoneContact> rank(List<PhoneContact> contacts, String query) {
@@ -65,13 +93,22 @@ class ContactMatcher {
         query,
         extraNames: contact.searchNames,
       );
-      if (s >= 58) {
+      if (s >= 70) {
         scored.add((c: contact, s: s));
       }
     }
     scored.sort((a, b) => b.s.compareTo(a.s));
+    if (scored.isEmpty) {
+      return [];
+    }
+    final best = scored.first.s;
+    // Drop weak tail matches (e.g. "Pancho Da" when you said "papa").
+    final cutoff = best >= 90 ? best - 18 : best - 8;
     final unique = <String, PhoneContact>{};
     for (final row in scored) {
+      if (row.s < cutoff) {
+        continue;
+      }
       unique.putIfAbsent('${row.c.displayName}|${row.c.phone}', () => row.c);
     }
     return unique.values.take(5).toList();
@@ -81,13 +118,17 @@ class ContactMatcher {
     if (name.isEmpty || q.isEmpty) {
       return 0;
     }
+    // Ultra-short tokens never prefix-match (ma → Mama / Manoj).
+    if (q.length < 3) {
+      return name == q ? 100 : 0;
+    }
     if (name == q) {
       return 100;
     }
-    if (name.startsWith(q)) {
+    if (name.startsWith(q) && q.length >= 4) {
       return 90;
     }
-    if (q.startsWith(name) && name.length >= 3) {
+    if (q.startsWith(name) && name.length >= 4) {
       return 88;
     }
     final nameParts = name.split(' ');
@@ -95,22 +136,22 @@ class ContactMatcher {
     if (nameParts.any((p) => p == q)) {
       return 85;
     }
-    if (name.contains(' $q') || name.contains('$q ')) {
+    if (q.length >= 4 && (name.contains(' $q') || name.contains('$q '))) {
       return 75;
     }
-    if (name.contains(q) && q.length >= 3) {
+    if (name.contains(q) && q.length >= 4) {
       return 65;
     }
     var hits = 0;
     for (final part in queryParts) {
-      if (part.length < 2) {
+      if (part.length < 3) {
         continue;
       }
-      if (nameParts.any((p) => p == part || p.startsWith(part) || part.startsWith(p))) {
+      if (nameParts.any((p) => _tokenMatch(p, part))) {
         hits += 1;
       }
     }
-    if (hits == queryParts.where((p) => p.length >= 2).length && hits > 0) {
+    if (hits == queryParts.where((p) => p.length >= 3).length && hits > 0) {
       return 70;
     }
     final fuzzy = _fuzzyScore(name, q);
@@ -129,6 +170,17 @@ class ContactMatcher {
     return hits * 35;
   }
 
+  /// Avoid "dad" (papa alias) matching the surname "Da" in "Pancho Da".
+  static bool _tokenMatch(String namePart, String queryPart) {
+    if (namePart == queryPart) {
+      return true;
+    }
+    if (namePart.length < 3 || queryPart.length < 3) {
+      return false;
+    }
+    return namePart.startsWith(queryPart) || queryPart.startsWith(namePart);
+  }
+
   static int _fuzzyScore(String name, String q) {
     if (q.length < 3 || name.length < 3) {
       return 0;
@@ -143,6 +195,9 @@ class ContactMatcher {
     final ratio = 1 - (dist / maxLen);
     if (ratio >= 0.82) {
       return (ratio * 78).round();
+    }
+    if (ratio >= 0.80 && q.length >= 4) {
+      return (ratio * 88).round().clamp(72, 86);
     }
     if (ratio >= 0.76 && q.length >= 4) {
       return (ratio * 72).round();

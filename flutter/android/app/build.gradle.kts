@@ -56,3 +56,15 @@ flutter {
 dependencies {
     implementation("com.google.ar:core:1.48.0")
 }
+
+// ultralytics_yolo pulls LiteRT 2.1.5 (classes live in `litert`); tflite_flutter
+// still pulls LiteRT 1.4.x (`litert` + `litert-api`/`litert-gpu`), which duplicates
+// org.tensorflow.lite.* on the classpath.
+configurations.configureEach {
+    exclude(group = "com.google.ai.edge.litert", module = "litert-api")
+    exclude(group = "com.google.ai.edge.litert", module = "litert-gpu")
+    resolutionStrategy {
+        force("com.google.ai.edge.litert:litert:2.1.5")
+        force("com.google.ai.edge.litert:litert-metadata:1.4.2")
+    }
+}

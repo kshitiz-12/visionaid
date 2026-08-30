@@ -4,7 +4,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 abstract class SpeechToTextService {
   Future<bool> initialize();
   Future<String> listen({
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 15),
     String? localeId,
   });
   Future<void> stop();
@@ -45,7 +45,7 @@ class AndroidSpeechToTextService implements SpeechToTextService {
 
   @override
   Future<String> listen({
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 15),
     String? localeId,
   }) async {
     final ready = await initialize();
@@ -58,7 +58,7 @@ class AndroidSpeechToTextService implements SpeechToTextService {
 
     if (_speech.isListening) {
       await _speech.stop();
-      await Future<void>.delayed(const Duration(milliseconds: 250));
+      await Future<void>.delayed(const Duration(milliseconds: 350));
     }
 
     final locale = await _resolveLocale(localeId);
@@ -157,7 +157,8 @@ class AndroidSpeechToTextService implements SpeechToTextService {
     var transcript = '';
     var lastHeardAt = DateTime.now();
     var gotFinal = false;
-    var shortenedPause = false;
+    const endSilence = Duration(milliseconds: 1400);
+    const endSilenceAfterFinal = Duration(milliseconds: 250);
 
     try {
       await _speech.listen(
@@ -170,19 +171,15 @@ class AndroidSpeechToTextService implements SpeechToTextService {
           lastHeardAt = DateTime.now();
           if (result.finalResult) {
             gotFinal = true;
-          } else if (!shortenedPause) {
-            shortenedPause = true;
-            try {
-              _speech.changePauseFor(const Duration(milliseconds: 1400));
-            } catch (_) {}
           }
         },
         listenOptions: SpeechListenOptions(
-          listenMode: ListenMode.confirmation,
+          // Dictation handles full commands ("call mummy", "find my keys").
+          listenMode: ListenMode.dictation,
           partialResults: true,
           cancelOnError: false,
           listenFor: timeout,
-          pauseFor: const Duration(seconds: 4),
+          pauseFor: const Duration(seconds: 3),
           localeId: localeId,
         ),
       );
@@ -195,13 +192,14 @@ class AndroidSpeechToTextService implements SpeechToTextService {
 
     final deadline = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(deadline)) {
-      if (gotFinal && transcript.isNotEmpty) {
-        break;
-      }
-      if (transcript.isNotEmpty &&
-          DateTime.now().difference(lastHeardAt) >=
-              const Duration(milliseconds: 700)) {
-        break;
+      if (transcript.isNotEmpty) {
+        final silence = DateTime.now().difference(lastHeardAt);
+        if (gotFinal && silence >= endSilenceAfterFinal) {
+          break;
+        }
+        if (!gotFinal && silence >= endSilence) {
+          break;
+        }
       }
       if (!_speech.isListening && transcript.isNotEmpty) {
         break;
@@ -211,11 +209,13 @@ class AndroidSpeechToTextService implements SpeechToTextService {
           _lastError.isNotEmpty) {
         break;
       }
-      await Future<void>.delayed(const Duration(milliseconds: 80));
+      await Future<void>.delayed(const Duration(milliseconds: 60));
     }
 
     if (_speech.isListening) {
       await _speech.stop();
+      // Let the engine flush a final partial into transcript.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
     }
 
     return transcript.trim();
@@ -236,7 +236,7 @@ class MockSpeechToTextService implements SpeechToTextService {
 
   @override
   Future<String> listen({
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 15),
     String? localeId,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 50));

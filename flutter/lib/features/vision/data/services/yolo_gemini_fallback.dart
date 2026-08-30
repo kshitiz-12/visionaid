@@ -7,7 +7,7 @@ import '../../../../core/network/companion_client.dart';
 import '../../../../core/services/user_prefs.dart';
 import '../../domain/services/object_detector_service.dart';
 
-/// Silent one-shot Gemini ID when YOLO is close but unsure. 6 s cooldown.
+/// Cloud scene describe when on-device models are sparse or unsure. 5 s cooldown.
 class YoloGeminiFallback {
   YoloGeminiFallback(this._companion);
 
@@ -15,7 +15,7 @@ class YoloGeminiFallback {
   DateTime? _last;
   bool _busy = false;
 
-  static const cooldown = Duration(seconds: 6);
+  static const cooldown = Duration(seconds: 5);
 
   /// True when a capture is allowed right now (cooldown + not busy).
   bool get canCapture {
@@ -32,18 +32,39 @@ class YoloGeminiFallback {
     if (!canCapture) {
       return false;
     }
+    if (_namedCount(detections) < 2) {
+      return true;
+    }
     for (final d in detections) {
       final metres = d.distanceMeters;
       final close = metres != null ? metres <= 1.2 : d.distance >= 0.22;
       final unsure = d.confidence < 0.40;
-      final unnamed = d.label == 'obstacle' ||
-          d.label == 'object' ||
-          d.label.contains('thing');
+      final unnamed = _isGeneric(d.label);
       if (close && (unsure || unnamed)) {
         return true;
       }
     }
     return false;
+  }
+
+  int _namedCount(List<RawDetection> detections) {
+    var count = 0;
+    for (final d in detections) {
+      if (!_isGeneric(d.label) && d.confidence >= 0.28) {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  bool _isGeneric(String label) {
+    final l = label.trim().toLowerCase();
+    return l.isEmpty ||
+        l == 'obstacle' ||
+        l == 'wall' ||
+        l == 'object' ||
+        l == 'unknown' ||
+        l.contains('thing');
   }
 
   Future<String?> identify({
@@ -68,9 +89,11 @@ class YoloGeminiFallback {
         return null;
       }
       final lang = AppLanguage.fromCode(await UserPrefs.getLanguageCode());
+      final sparse = _namedCount(detections) < 2;
       final reply = await _companion.chat(
-        message:
-            'Name the closest obstacle in one short spoken sentence. Use left, slight left, ahead, slight right, or right. Say close, one metre, or two metres.',
+        message: sparse
+            ? 'You help a blind person. Name every distinct object visible in 1-2 short spoken sentences: furniture, electronics, people, doors, bags, food, plants. Use left, ahead, right, close, or far. Be specific.'
+            : 'Name the closest important objects in one short spoken sentence. Use left, slight left, ahead, slight right, or right. Say close, one metre, or two metres.',
         language: lang.code,
         imageBase64: base64Encode(small),
       );
