@@ -102,7 +102,8 @@ apiRouter.post('/pdf/summarize', upload.single('file'), async (req, res) => {
     const ext = path.extname(req.file.originalname || '').toLowerCase();
     let text = '';
     if (ext === '.pdf' || req.file.mimetype === 'application/pdf') {
-      const { default: pdfParse } = await import('pdf-parse');
+      // Import lib entry directly — package root runs a debug demo under ESM.
+      const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default;
       const buf = fs.readFileSync(req.file.path);
       const parsed = await pdfParse(buf);
       text = parsed.text || '';

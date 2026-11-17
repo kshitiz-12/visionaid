@@ -1,15 +1,28 @@
 import { browserAgent } from '../agent/browserAgent.js';
 import { confirmGate } from '../agent/confirmGate.js';
 
-export async function prepareFlipkartOrder(query) {
+/** Flipkart Minutes only (quick grocery). Normal Flipkart browse is disabled. */
+export async function prepareFlipkartMinutesOrder(query) {
   const q = (query || 'milk').trim();
-  // Minutes often redirects; main site search is more stable for demos.
-  await browserAgent.navigate('https://www.flipkart.com/');
+  // Minutes storefront — falls back to Minutes search URL.
+  await browserAgent.navigate(
+    `https://www.flipkart.com/search?q=${encodeURIComponent(q)}&marketplace=FLIPKART&as-show=off&as=off`,
+  );
+  // Try Minutes-specific entry if available in UI.
   const page = await browserAgent.ensure();
+  try {
+    const minutes = page.getByText(/minutes/i).first();
+    if (await minutes.isVisible({ timeout: 2500 }).catch(() => false)) {
+      await minutes.click().catch(() => {});
+      await page.waitForTimeout(1200);
+    }
+  } catch {
+    /* ignore */
+  }
 
   try {
     const close = page.locator('button._2KpZ6l._2doB4z');
-    if (await close.isVisible({ timeout: 2000 }).catch(() => false)) {
+    if (await close.isVisible({ timeout: 1500 }).catch(() => false)) {
       await close.click().catch(() => {});
     }
   } catch {
@@ -18,28 +31,20 @@ export async function prepareFlipkartOrder(query) {
 
   try {
     const search = page.getByPlaceholder(/search/i).first();
-    await search.fill(q);
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(2500);
-  } catch {
-    await browserAgent.type('Search for Products', q, { pressEnter: true });
-  }
-
-  try {
-    const add = page.getByText(/add to cart/i).first();
-    if (await add.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await add.click();
-      await page.waitForTimeout(1000);
+    if (await search.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await search.fill(q);
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(2000);
     }
   } catch {
-    /* ignore */
+    /* already on search */
   }
 
   await browserAgent.screenshot();
   const pending = confirmGate.propose({
     kind: 'flipkart_place',
     query: q,
-    spokenPrompt: `Flipkart search for ${q} is ready. Say confirm to open cart/checkout, or cancel. I will not pay without confirm.`,
+    spokenPrompt: `Flipkart Minutes search for ${q} is ready. Say confirm to open cart, or cancel. I will not pay without confirm.`,
   });
   return { spoken: pending.spokenPrompt, pending };
 }
@@ -57,6 +62,9 @@ export async function executeFlipkartConfirm() {
   await browserAgent.screenshot();
   return {
     spoken:
-      'Flipkart cart is open. Check items, then pay manually if correct. Say what’s on my screen for a readout.',
+      'Flipkart Minutes cart is open. Check items, then pay manually if correct.',
   };
 }
+
+// Back-compat alias (dispatcher may still import old name briefly)
+export const prepareFlipkartOrder = prepareFlipkartMinutesOrder;

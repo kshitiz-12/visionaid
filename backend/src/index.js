@@ -46,9 +46,11 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ ok: false, error: 'Internal error' });
 });
 
-app.listen(config.port, () => {
+// Bind 0.0.0.0 so Render's port scanner can reach the service (not only localhost).
+const host = process.env.HOST || '0.0.0.0';
+app.listen(config.port, host, () => {
   logger.info('listening', {
-    url: `http://127.0.0.1:${config.port}`,
+    url: `http://${host}:${config.port}`,
     profile: config.userDataDir,
     headless: config.headless,
     gemini: Boolean(config.geminiApiKey),

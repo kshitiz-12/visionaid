@@ -19,6 +19,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: HOST
+        value: "0.0.0.0"
       - key: PORT
         value: "3000"
       - key: HEADLESS
@@ -28,4 +30,4 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-3.8-flash

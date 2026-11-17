@@ -1,12 +1,64 @@
 import { browserAgent } from '../agent/browserAgent.js';
 import { confirmGate } from '../agent/confirmGate.js';
+import { remember, setActiveApp } from '../agent/memory.js';
+import { speakBrief, speakHeadline } from '../agent/gemini.js';
 
 export async function openWhatsApp() {
   const nav = await browserAgent.navigate('https://web.whatsapp.com/');
+  setActiveApp('whatsapp');
   return {
-    spoken: `WhatsApp Web is open. If you see a QR code, scan it once with your phone. Title: ${nav.title}.`,
+    spoken:
+      'WhatsApp is open. If you see a QR code, scan it once. Then say last unread message, or last message from mummy.',
     ...nav,
   };
+}
+
+export async function readLastMessage({ contact } = {}) {
+  await browserAgent.navigate('https://web.whatsapp.com/');
+  const page = await browserAgent.ensure();
+  await page.waitForTimeout(2000);
+
+  const who = (contact || '').trim();
+  if (who) {
+    try {
+      const search = page
+        .getByRole('textbox', { name: /search|Search name|Search or start/i })
+        .first();
+      await search.click({ timeout: 8000 });
+      await search.fill('');
+      await search.fill(who);
+      await page.waitForTimeout(1500);
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('Enter');
+      await page.waitForTimeout(1500);
+    } catch {
+      /* chat may already be open */
+    }
+  }
+
+  const view = await browserAgent.readVisibleText({ maxChars: 8000 });
+  remember({
+    kind: 'whatsapp',
+    source: 'whatsapp_read',
+    contact: who,
+    title: view.title,
+    url: view.url,
+    text: view.text,
+  });
+  const spoken = await speakHeadline(
+    `${who ? `Chat with ${who}.` : ''} ${view.text}`,
+    { kind: 'whatsapp message' },
+  );
+  return {
+    spoken,
+    title: view.title,
+    url: view.url,
+  };
+}
+
+export async function briefLastWhatsApp(savedText) {
+  const spoken = await speakBrief(savedText || '', { kind: 'whatsapp message' });
+  return { spoken };
 }
 
 /**
@@ -16,7 +68,6 @@ export async function draftWhatsAppMessage({ contact, body }) {
   await browserAgent.navigate('https://web.whatsapp.com/');
   const page = await browserAgent.ensure();
 
-  // Search box
   try {
     const search = page.getByRole('textbox', { name: /search|Search name/i }).first();
     await search.click({ timeout: 8000 });
@@ -25,7 +76,7 @@ export async function draftWhatsAppMessage({ contact, body }) {
     await page.keyboard.press('Enter');
     await page.waitForTimeout(1000);
   } catch {
-    // Fall through — user may already have chat open.
+    /* Fall through */
   }
 
   if (body) {
@@ -54,7 +105,6 @@ export async function draftWhatsAppMessage({ contact, body }) {
 
 export async function executeWhatsAppSend() {
   const page = await browserAgent.ensure();
-  // Send button varies; Enter often works in WA Web.
   await page.keyboard.press('Enter');
   await page.waitForTimeout(800);
   await browserAgent.screenshot();

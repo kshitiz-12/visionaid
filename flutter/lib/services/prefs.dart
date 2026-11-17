@@ -8,8 +8,8 @@ class UserPrefs {
 
   static Future<String> getApiBaseUrl() async {
     final p = await SharedPreferences.getInstance();
-    // Emulator default. For live Render, set in Settings once deployed.
-    return p.getString(_api) ?? 'http://10.0.2.2:8787';
+    // Physical-device LAN default (PC Wi-Fi). Emulator: set http://10.0.2.2:8787 in Settings.
+    return p.getString(_api) ?? 'http://10.192.17.6:8787';
   }
 
   static Future<void> setApiBaseUrl(String v) async {

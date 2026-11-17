@@ -45,7 +45,8 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late ApiClient _api;
+  // Sync default so first build never hits LateInitializationError.
+  ApiClient _api = ApiClient('http://10.192.17.6:8787');
   final _tts = FlutterTts();
   final _stt = SpeechToText();
 
@@ -67,6 +68,7 @@ class _HomePageState extends State<HomePage> {
     final base = await UserPrefs.getApiBaseUrl();
     _lang = await UserPrefs.getLanguageCode();
     _api = ApiClient(base);
+    if (mounted) setState(() {});
     await _tts.setSpeechRate(0.47);
     await _tts.setVolume(1);
     await _tts.setLanguage(_lang == 'hi' ? 'hi-IN' : 'en-US');
@@ -84,8 +86,8 @@ class _HomePageState extends State<HomePage> {
       final gemini = h['geminiConfigured'] == true;
       final msg = _backendOk
           ? (_lang == 'hi'
-              ? 'बैकएंड जुड़ा। सुनने के लिए टैप करें।'
-              : 'Backend connected${gemini ? '' : ' (Gemini offline summaries)'}. Tap Listen.')
+              ? 'जुड़ गया। सुनो पर टैप करके कुछ भी पूछो — समय, जोक, क्रिकेट स्कोर।'
+              : 'Connected${gemini ? '' : ' (Gemini off)'}. Tap Listen — ask time, jokes, cricket score, open Gmail…')
           : (_lang == 'hi'
               ? 'बैकएंड बंद है। सेटिंग में API URL चेक करें।'
               : 'Backend offline. Check API URL in Settings.');
@@ -105,21 +107,78 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  String _forSpeech(String text) {
+    return text
+        .replaceAll('**', ' ')
+        .replaceAll('*', ' ')
+        .replaceAll(RegExp(r'[_`#]+'), ' ')
+        .replaceAll(RegExp(r'\b(sender|subject|body summary)\s*:\s*', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  /// Android TTS often cuts long strings — speak sentence chunks and wait.
+  List<String> _speechChunks(String text) {
+    final parts = text
+        .split(RegExp(r'(?<=[.!?])\s+'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return [text];
+    final chunks = <String>[];
+    final buf = StringBuffer();
+    for (final p in parts) {
+      if (buf.length + p.length > 160 && buf.isNotEmpty) {
+        chunks.add(buf.toString().trim());
+        buf.clear();
+      }
+      buf.write('$p ');
+    }
+    if (buf.isNotEmpty) chunks.add(buf.toString().trim());
+    return chunks;
+  }
+
   Future<void> _say(String text) async {
     if (!mounted) return;
-    setState(() => _status = text);
+    final clean = _forSpeech(text);
+    if (clean.isEmpty) return;
+    setState(() => _status = clean);
     await _tts.stop();
-    await _tts.speak(text);
+    await _tts.setSpeechRate(0.47);
+    await _tts.setVolume(1.0);
+    for (final chunk in _speechChunks(clean)) {
+      final done = Completer<void>();
+      _tts.setCompletionHandler(() {
+        if (!done.isCompleted) done.complete();
+      });
+      final ok = await _tts.speak(chunk);
+      if (ok != 1) {
+        // Engine rejected speak — fall through delay so UX still moves.
+        await Future<void>.delayed(Duration(milliseconds: 400 + chunk.length * 40));
+        continue;
+      }
+      await done.future.timeout(
+        Duration(seconds: 8 + (chunk.length ~/ 8).clamp(4, 40)),
+        onTimeout: () {},
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+    }
   }
+
+  bool _sttReady = false;
+  String _partialHeard = '';
 
   Future<void> _listen() async {
     if (_busy) return;
     setState(() {
       _busy = true;
       _listening = true;
-      _status = _lang == 'hi' ? 'सुन रहा हूँ…' : 'Listening…';
+      _partialHeard = '';
+      _status = _lang == 'hi' ? 'सुन रहा हूँ… साफ़ बोलो' : 'Listening… speak clearly';
     });
     await _tts.stop();
+    // Let speaker settle so TTS echo does not steal the mic.
+    await Future<void>.delayed(const Duration(milliseconds: 450));
     try {
       final mic = await Permission.microphone.request();
       if (!mic.isGranted) {
@@ -130,8 +189,13 @@ class _HomePageState extends State<HomePage> {
         );
         return;
       }
-      final ready = await _stt.initialize();
-      if (!ready) {
+      if (!_sttReady) {
+        _sttReady = await _stt.initialize(
+          onError: (e) => debugPrint('STT error: $e'),
+          onStatus: (s) => debugPrint('STT status: $s'),
+        );
+      }
+      if (!_sttReady) {
         await _say(
           _lang == 'hi'
               ? 'स्पीच उपलब्ध नहीं।'
@@ -139,37 +203,48 @@ class _HomePageState extends State<HomePage> {
         );
         return;
       }
+
       final completer = Completer<String>();
+      _partialHeard = '';
       await _stt.listen(
         onResult: (r) {
+          final words = r.recognizedWords.trim();
+          if (words.isEmpty) return;
+          _partialHeard = words;
+          if (mounted) {
+            setState(() => _status = 'Heard: $words');
+          }
           if (r.finalResult && !completer.isCompleted) {
-            completer.complete(r.recognizedWords.trim());
+            completer.complete(words);
           }
         },
         listenOptions: SpeechListenOptions(
           listenMode: ListenMode.dictation,
           partialResults: true,
-          cancelOnError: true,
-          listenFor: const Duration(seconds: 14),
-          pauseFor: const Duration(seconds: 2),
-          localeId: _lang == 'hi' ? 'hi_IN' : 'en_US',
+          cancelOnError: false,
+          // Longer window + pause so "what is the last mail" is not cut off.
+          listenFor: const Duration(seconds: 25),
+          pauseFor: const Duration(seconds: 4),
+          // en_IN hears Indian English phrases better than en_US for this app.
+          localeId: _lang == 'hi' ? 'hi_IN' : 'en_IN',
         ),
       );
       final heard = await completer.future.timeout(
-        const Duration(seconds: 16),
-        onTimeout: () => '',
+        const Duration(seconds: 28),
+        onTimeout: () => _partialHeard,
       );
       await _stt.stop();
-      if (heard.isEmpty) {
+      final finalHeard = heard.trim().isNotEmpty ? heard.trim() : _partialHeard.trim();
+      if (finalHeard.isEmpty) {
         await _say(
           _lang == 'hi'
-              ? 'सुनाई नहीं दिया। फिर से टैप करें।'
-              : "I didn't catch that. Tap Listen again.",
+              ? 'सुनाई नहीं दिया। फिर से Listen दबाओ और धीरे बोलो।'
+              : "I didn't catch that. Tap Listen again and speak a bit slower.",
         );
         return;
       }
-      setState(() => _status = 'Heard: $heard');
-      await _handle(heard);
+      setState(() => _status = 'Heard: $finalHeard');
+      await _handle(finalHeard);
     } catch (e) {
       await _say('Listening failed. $e');
     } finally {
@@ -201,7 +276,10 @@ class _HomePageState extends State<HomePage> {
       );
       return;
     }
-    await _say(_lang == 'hi' ? 'काम हो रहा है…' : 'Working…');
+    // Don't speak "Working…" — it eats time and feels weak. Show status only.
+    if (mounted) {
+      setState(() => _status = _lang == 'hi' ? 'सोच रहा हूँ…' : 'On it…');
+    }
     try {
       final result = await _api.command(heard);
       setState(() {
@@ -210,8 +288,8 @@ class _HomePageState extends State<HomePage> {
       });
       await _say(result.spoken);
       if (result.pending != null) {
-        // Hands-free confirm turn for blind demo.
-        await Future<void>.delayed(const Duration(milliseconds: 600));
+        // Wait until speak finished (handled inside _say), then listen for confirm.
+        await Future<void>.delayed(const Duration(milliseconds: 400));
         if (mounted && !_busy) unawaited(_listen());
       }
     } catch (e) {
@@ -376,47 +454,61 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  _chip('Help', () => _quick('help')),
-                  _chip('Screen', () => _quick("what's on my screen")),
-                  _chip('Gmail', () => _quick('open gmail')),
-                  _chip('Mail digest', () => _quick('any new mail')),
-                  _chip('WhatsApp', () => _quick('open whatsapp')),
-                  _chip('Swiggy', () => _quick('order maggi on swiggy')),
-                  _chip('Flipkart', () => _quick('get milk on flipkart')),
-                  _chip('Confirm', () => _quick('confirm')),
-                  _chip('Cancel', () => _quick('cancel')),
-                  _chip('PDF', _uploadPdf),
-                  _chip('SOS', _emergency),
-                ],
+              Semantics(
+                label: 'Main listen button. Double tap and speak.',
+                button: true,
+                child: FilledButton(
+                  onPressed: _busy ? null : _listen,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(96),
+                  ),
+                  child: Text(
+                    _listening
+                        ? (_lang == 'hi' ? 'सुन रहा हूँ… बोलो' : 'Listening… speak now')
+                        : (_lang == 'hi'
+                            ? 'सुनो — कुछ भी पूछो'
+                            : 'Listen — ask me anything'),
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
               ),
-              const SizedBox(height: 12),
-              FilledButton(
-                onPressed: _busy ? null : _listen,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(68),
-                ),
-                child: Text(
-                  _listening
-                      ? (_lang == 'hi' ? 'सुन रहा हूँ…' : 'Listening…')
-                      : (_lang == 'hi' ? 'सुनो' : 'Listen'),
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-                ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _busy ? null : () => _quick('confirm'),
+                      child: Text(_lang == 'hi' ? 'कन्फर्म' : 'Confirm'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _busy ? null : () => _quick('cancel'),
+                      child: Text(_lang == 'hi' ? 'कैंसल' : 'Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _busy ? null : _uploadPdf,
+                      child: const Text('PDF'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.tonal(
+                      onPressed: _busy ? null : _emergency,
+                      child: const Text('SOS'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget _chip(String label, VoidCallback onTap) {
-    return ActionChip(
-      label: Text(label),
-      onPressed: _busy ? null : onTap,
     );
   }
 }
