@@ -1,45 +1,42 @@
 # VoiceWeb Agent
 
-Voice-first browser assistant: Flutter STT/TTS + Node/Express + Playwright Chromium. Confirms risky actions before click; Gemini summarizes pages and PDFs.
+**Final major-project build:** voice-first accessibility assistant that operates the web through a controlled browser.
 
-## Layout
+- **ORION** (React Native / Expo): fully animated cosmic UI — splash, home, listen, process, confirm  
+- Backend: Playwright + confirm-before-pay/send + Gemini + audit log  
+- `flutter/` is legacy; use **`orion/`** as the mobile app  
 
-```
-visionaid/
-├── flutter/     # Android voice client
-├── backend/     # Playwright agent API (Render)
-├── docs/        # Architecture, setup, demo, report
-└── render.yaml  # Render Blueprint
-```
+## Docs
 
-## Backend (local)
+| Doc | Use |
+|-----|-----|
+| [docs/COMPLETE_PROJECT.md](docs/COMPLETE_PROJECT.md) | Full project document |
+| [orion/README.md](orion/README.md) | ORION app run notes |
 
-```bash
+## Quick start
+
+```powershell
 cd backend
-copy .env.example .env
-# set GEMINI_API_KEY=AIza...
 npm install
-npx playwright install chromium
+npm run install:browsers
 npm run dev
 ```
 
-Health: `GET http://127.0.0.1:8787/api/health`
-
-## Flutter
-
-```bash
-cd flutter
-flutter pub get
-flutter run
+```powershell
+cd orion
+npm start
 ```
 
-In **Settings**, set API base URL to your machine IP (`http://192.168.x.x:8787`) or the Render URL after deploy.
+In ORION **Settings**, set API URL to your PC (`http://<lan-ip>:8787` or emulator `http://10.0.2.2:8787`).
 
-## Deploy (Render)
+## Features shipped
 
-1. Push this repo to GitHub.
-2. Render → New → Blueprint → select the repo.
-3. Set `GEMINI_API_KEY` (must start with `AIza`).
-4. After deploy, point the Flutter app at `https://<service>.onrender.com`.
-
-Details: [docs/voiceweb-deploy.md](docs/voiceweb-deploy.md) · [docs/SETUP.md](docs/SETUP.md)
+1. Voice commands (EN + HI patterns)  
+2. What’s on my screen?  
+3. Live browser mirror  
+4. Gmail open + unread digest  
+5. WhatsApp Web open + draft send + confirm  
+6. Swiggy / Flipkart prepare + confirm  
+7. PDF / page summarize  
+8. Emergency call  
+9. Audit log at `/api/audit`  

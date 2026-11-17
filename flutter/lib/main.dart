@@ -287,11 +287,9 @@ class _HomePageState extends State<HomePage> {
         _pendingConfirm = result.pending != null;
       });
       await _say(result.spoken);
-      if (result.pending != null) {
-        // Wait until speak finished (handled inside _say), then listen for confirm.
-        await Future<void>.delayed(const Duration(milliseconds: 400));
-        if (mounted && !_busy) unawaited(_listen());
-      }
+      // Keep listening like a phone assistant — confirm, follow-ups, next command.
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      if (mounted && !_busy) unawaited(_listen());
     } catch (e) {
       await _say(
         _lang == 'hi'

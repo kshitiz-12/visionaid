@@ -27,10 +27,13 @@ export function remember(payload) {
     ...payload,
     ts: Date.now(),
   };
-  if (payload?.kind === 'email' || payload?.kind === 'email_list') {
+  if (
+    payload?.kind === 'email' ||
+    payload?.kind === 'email_list'
+  ) {
     activeApp = 'gmail';
   }
-  if (payload?.kind === 'whatsapp') {
+  if (payload?.kind === 'whatsapp' || payload?.kind === 'whatsapp_list') {
     activeApp = 'whatsapp';
   }
   return last;

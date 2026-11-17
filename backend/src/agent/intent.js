@@ -45,6 +45,22 @@ const PATTERNS = [
     type: 'gmail_unread',
     re: /\b(any (new )?mail|unread (mail|email)?|new emails?|mail digest|inbox digest|कोई\s*मेल)\b/i,
   },
+  {
+    type: 'gmail_reply',
+    re: /\b(reply\s+(saying|to\s+(this|the)?\s*mail|with)|respond\s+saying|answer\s+(the\s+)?mail)\b/i,
+  },
+  {
+    type: 'gmail_compose',
+    re: /\b(compose\s+(a\s+)?(mail|email)|write\s+(a\s+)?(mail|email)|email\s+\w+|send\s+(a\s+)?(mail|email)\s+to)\b/i,
+  },
+  {
+    type: 'gmail_search',
+    re: /\b(open\s+(mail|email)\s+from|find\s+(mail|email)|search\s+(mail|email|inbox)|mail\s+from)\b/i,
+  },
+  {
+    type: 'whatsapp_chats',
+    re: /\b(who\s+messaged|recent\s+chats|chat\s+list|unread\s+chats|whatsapp\s+chats)\b/i,
+  },
   // WhatsApp read last from contact BEFORE send
   {
     type: 'whatsapp_read',
@@ -55,8 +71,12 @@ const PATTERNS = [
     re: /\b(open whatsapp|whatsapp (khol|open)|व्हाट्सऐप\s*खोल)\b/i,
   },
   {
+    type: 'whatsapp_reply',
+    re: /\b(reply\s+saying|respond\s+saying|tell\s+them|answer\s+saying)\b/i,
+  },
+  {
     type: 'whatsapp_send',
-    re: /\b((send|bhejo|भेजो).{0,40}whatsapp|whatsapp.{0,40}(send|message|msg|bol|say)|message\s+\w+\s+(say|bol|:))\b/i,
+    re: /\b((send|bhejo|भेजो).{0,40}whatsapp|whatsapp.{0,40}(send|message|msg|bol|say)|message\s+\w+\s+(say|bol|:)|send\s+.+\s+to\s+\w+)\b/i,
   },
   {
     type: 'swiggy_order',
@@ -114,10 +134,14 @@ export function parseIntent(spoken) {
 
 function extractSlots(type, text) {
   const slots = {};
-  if (type === 'whatsapp_send' || type === 'whatsapp_read') {
+  if (
+    type === 'whatsapp_send' ||
+    type === 'whatsapp_read' ||
+    type === 'whatsapp_reply'
+  ) {
     const from =
       text.match(
-        /(?:from|of|को)\s+(mummy|mom|mama|papa|dad|[\w]{2,24})/i,
+        /(?:from|of|to|को)\s+(mummy|mom|mama|papa|dad|[\w]{2,24})/i,
       ) ||
       text.match(
         /(?:message|msg|chat)\s+(?:from\s+)?(mummy|mom|mama|papa|dad|[\w]{2,24})/i,
@@ -126,12 +150,31 @@ function extractSlots(type, text) {
     else if (/mummy|mom|मम्मी/i.test(text)) slots.contact = 'Mom';
     else slots.contact = '';
 
-    if (type === 'whatsapp_send') {
+    if (type === 'whatsapp_send' || type === 'whatsapp_reply') {
       const m =
-        text.match(/(?:say|bol|bolke|कि|:)\s+(.+)$/i) ||
-        text.match(/message\s+\w+\s+(.+)$/i);
+        text.match(/(?:saying|say|bol|bolke|कि|:)\s+(.+)$/i) ||
+        text.match(/message\s+\w+\s+(.+)$/i) ||
+        text.match(/tell them\s+(.+)$/i);
       slots.body = (m?.[1] || '').trim();
     }
+  }
+  if (type === 'gmail_reply') {
+    const m = text.match(/(?:saying|say|with|:)\s+(.+)$/i);
+    slots.body = (m?.[1] || '').trim();
+  }
+  if (type === 'gmail_compose') {
+    const to =
+      text.match(/(?:to|को)\s+([\w.@+-]{2,40})/i) ||
+      text.match(/email\s+([\w.@+-]{2,40})/i);
+    if (to) slots.to = to[1];
+    const m = text.match(/(?:saying|say|about|:)\s+(.+)$/i);
+    slots.body = (m?.[1] || '').trim();
+  }
+  if (type === 'gmail_search') {
+    const m =
+      text.match(/(?:from|about)\s+(.+)$/i) ||
+      text.match(/search\s+(?:mail|email|inbox)\s+(.+)$/i);
+    slots.query = (m?.[1] || text).replace(/open|mail|email|from|search|inbox/gi, '').trim();
   }
   if (type === 'swiggy_order') {
     const m = text.match(
@@ -163,12 +206,11 @@ function extractSlots(type, text) {
 
 export function helpText() {
   return [
-    'Tap Listen and speak clearly.',
-    'Mail: open Gmail. What is the last mail. Then say tell me in brief for more.',
-    'WhatsApp: tell me the last message from mummy. Then tell me in brief.',
+    'Tap Listen and speak naturally, like talking to a person.',
+    'Mail: open Gmail. What is the last mail. Any unread mail. Tell me in brief. Reply saying thanks. Compose mail to someone saying hello. Open mail from Google.',
+    'WhatsApp: open WhatsApp. Who messaged me. Last unread message. Last message from mummy. Tell me in brief. Reply saying I will call you. Send hello to Kshitiz — then confirm.',
     'Ask: what is the time, tell me a joke, cricket live score.',
     'Food: order Maggi on Swiggy — then confirm.',
-    'Grocery: get milk on Flipkart Minutes — then confirm. Normal Flipkart is disabled.',
-    'Cancel. Help. SOS for emergency.',
+    'Cancel anytime. Help. SOS for emergency.',
   ].join(' ');
 }

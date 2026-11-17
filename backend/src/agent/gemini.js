@@ -56,8 +56,10 @@ export async function speakHeadline(text, { kind = 'email' } = {}) {
 
 Turn this ${kind} page text into ONE short spoken headline, max 2 sentences.
 Style example: First mail is from Google about finishing your Windows setup.
+For WhatsApp, example: Last message from Jenny says she will call in 10 minutes.
 Then add: Say tell me in brief if you want more detail.
-Do not invent facts. Ignore menus and ads.
+Do not invent facts. Ignore menus, ads, notification banners, and "downloading messages" sync text.
+Focus only on the actual message content and who it is from.
 
 CONTENT:
 ${body.slice(0, 10000)}`,
@@ -77,9 +79,10 @@ export async function speakBrief(text, { kind = 'email' } = {}) {
   const out = await generate(
     `${VOICE_STYLE}
 
-Give a natural spoken brief about this ${kind} in 4 to 6 short sentences.
+Give a natural spoken brief about this ${kind} in 4 to 6 complete short sentences.
 Start like you are talking to a friend. Cover who it is from, what they want, and any action needed.
-No labels. No markdown.
+Finish your last sentence fully. Do not trail off mid-sentence.
+No labels. No markdown. Do not tell the user what to say next.
 
 CONTENT:
 ${body.slice(0, 12000)}`,
@@ -90,16 +93,24 @@ ${body.slice(0, 12000)}`,
   return out;
 }
 
-export async function chatAnswer(question, { pageContext = '', nowIso = '' } = {}) {
+export async function chatAnswer(
+  question,
+  { pageContext = '', nowIso = '', appContext = null } = {},
+) {
   const q = (question || '').trim();
   if (!q) return 'Ask me something.';
 
   const prompt = [
     VOICE_STYLE,
     'Answer in 2 to 5 short spoken sentences.',
+    'You are a voice assistant that can also run WhatsApp and Gmail for the user.',
+    'If they ask what to do next, suggest natural voice commands like: last unread message, reply saying thanks, what is the last mail, compose mail to…',
     'If the user asks for a joke, tell one clean short joke.',
     'If pageContext is provided, prefer facts from it.',
     nowIso ? `Current local datetime: ${nowIso}` : '',
+    appContext
+      ? `App memory context (JSON): ${JSON.stringify(appContext).slice(0, 1500)}`
+      : '',
     pageContext
       ? `Live page context:\n${pageContext.slice(0, 10000)}`
       : '',

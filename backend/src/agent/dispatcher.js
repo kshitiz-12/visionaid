@@ -9,6 +9,7 @@ import { confirmGate } from './confirmGate.js';
 import { chatAnswer, speakBrief, summarizeText } from './gemini.js';
 import { helpText } from './intent.js';
 import {
+  contextSnapshot,
   recall,
   setActiveApp,
   setLastIntentType,
@@ -124,6 +125,10 @@ async function runIntent(intent, { pdfText, spoken }) {
         const r = await whatsapp.executeWhatsAppSend();
         return { intent, spoken: r.spoken, meta: { executed: pending }, ok: true };
       }
+      if (pending.kind === 'gmail_send') {
+        const r = await gmail.executeGmailSend();
+        return { intent, spoken: r.spoken, meta: { executed: pending }, ok: true };
+      }
       if (pending.kind === 'swiggy_place') {
         const r = await swiggy.executeSwiggyConfirm();
         return { intent, spoken: r.spoken, meta: { executed: pending }, ok: true };
@@ -131,6 +136,10 @@ async function runIntent(intent, { pdfText, spoken }) {
       if (pending.kind === 'flipkart_place') {
         const r = await flipkart.executeFlipkartConfirm();
         return { intent, spoken: r.spoken, meta: { executed: pending }, ok: true };
+      }
+      if (pending.kind === 'flipkart_alt') {
+        const r = await flipkart.addMinutesAlternative({ optionIndex: 0 });
+        return { intent, ...r, ok: true };
       }
       return {
         intent,
@@ -142,6 +151,14 @@ async function runIntent(intent, { pdfText, spoken }) {
     case 'cancel': {
       const was = confirmGate.clear();
       audit('cancel', { kind: was?.kind || null });
+      if (was?.kind === 'whatsapp_send') {
+        const r = await whatsapp.cancelWhatsAppDraft();
+        return { intent, spoken: r.spoken, ok: true };
+      }
+      if (was?.kind === 'gmail_send') {
+        const r = await gmail.cancelGmailDraft();
+        return { intent, spoken: r.spoken, ok: true };
+      }
       return {
         intent,
         spoken: was ? 'Okay, cancelled.' : 'Nothing to cancel.',
@@ -155,17 +172,49 @@ async function runIntent(intent, { pdfText, spoken }) {
     case 'gmail_last':
       return { intent, ...(await gmail.lastMailDigest()), ok: true };
 
+    case 'gmail_unread':
+      return { intent, ...(await gmail.unreadDigest()), ok: true };
+
+    case 'gmail_reply':
+      return {
+        intent,
+        ...(await gmail.draftGmailReply({
+          body: intent.slots.body || intent.slots.query || '',
+        })),
+        ok: true,
+      };
+
+    case 'gmail_compose':
+      return {
+        intent,
+        ...(await gmail.draftGmailCompose({
+          to: intent.slots.to || intent.slots.contact || intent.slots.query || '',
+          subject: intent.slots.subject || '',
+          body: intent.slots.body || '',
+        })),
+        ok: true,
+      };
+
+    case 'gmail_search':
+      return {
+        intent,
+        ...(await gmail.openMailByQuery(
+          intent.slots.query || intent.slots.contact || spoken,
+        )),
+        ok: true,
+      };
+
     case 'followup_brief': {
       const mem = recall();
       if (!mem?.text) {
         return {
           intent,
           spoken:
-            'I do not have a recent mail or message saved. Say what is the last mail first, then tell me in brief.',
+            'I do not have a recent mail or message saved. Say what is the last mail, or last WhatsApp message first, then tell me in brief.',
           ok: true,
         };
       }
-      if (mem.kind === 'whatsapp') {
+      if (mem.kind === 'whatsapp' || mem.kind === 'whatsapp_list') {
         return {
           intent,
           ...(await whatsapp.briefLastWhatsApp(mem.text)),
@@ -183,11 +232,11 @@ async function runIntent(intent, { pdfText, spoken }) {
       return { intent, spoken: spokenOut, ok: true };
     }
 
-    case 'gmail_unread':
-      return { intent, ...(await gmail.unreadDigest()), ok: true };
-
     case 'whatsapp_open':
       return { intent, ...(await whatsapp.openWhatsApp()), ok: true };
+
+    case 'whatsapp_chats':
+      return { intent, ...(await whatsapp.listRecentChats()), ok: true };
 
     case 'whatsapp_read':
       return {
@@ -198,12 +247,24 @@ async function runIntent(intent, { pdfText, spoken }) {
         ok: true,
       };
 
+    case 'whatsapp_reply':
+      return {
+        intent,
+        ...(await whatsapp.draftWhatsAppMessage({
+          contact: intent.slots.contact,
+          body: intent.slots.body || intent.slots.query || '',
+          asReply: true,
+        })),
+        ok: true,
+      };
+
     case 'whatsapp_send':
       return {
         intent,
         ...(await whatsapp.draftWhatsAppMessage({
           contact: intent.slots.contact,
           body: intent.slots.body,
+          asReply: false,
         })),
         ok: true,
       };
@@ -222,10 +283,49 @@ async function runIntent(intent, { pdfText, spoken }) {
       return {
         intent,
         ...(await flipkart.prepareFlipkartMinutesOrder(
-          intent.slots.query || 'milk',
+          intent.slots.query || spoken.replace(/flipkart|minutes|order|add|get|buy/gi, '').trim() || 'milk',
         )),
         ok: true,
       };
+
+    case 'flipkart_minutes_remove':
+      setActiveApp('flipkart');
+      return {
+        intent,
+        ...(await flipkart.removeFromMinutesCart(
+          intent.slots.query ||
+            spoken.replace(/flipkart|minutes|remove|from|cart|delete/gi, '').trim() ||
+            'milk',
+        )),
+        ok: true,
+      };
+
+    case 'flipkart_minutes_cart':
+      setActiveApp('flipkart');
+      return {
+        intent,
+        ...(await flipkart.readMinutesCart()),
+        ok: true,
+      };
+
+    case 'flipkart_minutes_alt': {
+      setActiveApp('flipkart');
+      const q = String(intent.slots?.query || spoken || '').trim();
+      const num = Number((q.match(/\b([1-3])\b/) || [])[1] || 0);
+      const optionIndex = num > 0 ? num - 1 : 0;
+      const hint = q
+        .replace(/\b(add|option|first|second|third|one|two|the)\b/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return {
+        intent,
+        ...(await flipkart.addMinutesAlternative({
+          optionIndex,
+          nameHint: hint,
+        })),
+        ok: true,
+      };
+    }
 
     case 'open_url': {
       const target =
@@ -281,8 +381,20 @@ async function runIntent(intent, { pdfText, spoken }) {
     }
 
     case 'chat': {
+      const mem = recall();
       const spokenOut = await chatAnswer(spoken, {
         nowIso: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+        appContext: {
+          snapshot: contextSnapshot(),
+          memory: mem
+            ? {
+                kind: mem.kind,
+                contact: mem.contact,
+                from: mem.from,
+                subject: mem.subject,
+              }
+            : null,
+        },
       });
       return { intent, spoken: spokenOut, ok: true };
     }
@@ -290,6 +402,7 @@ async function runIntent(intent, { pdfText, spoken }) {
     default: {
       const spokenOut = await chatAnswer(spoken, {
         nowIso: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+        appContext: { snapshot: contextSnapshot() },
       });
       return { intent, spoken: spokenOut, ok: true };
     }

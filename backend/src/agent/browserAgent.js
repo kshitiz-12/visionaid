@@ -24,11 +24,16 @@ export class BrowserAgent {
     this.context = await chromium.launchPersistentContext(config.userDataDir, {
       headless: config.headless,
       viewport: { width: 1280, height: 800 },
+      hasTouch: true,
+      isMobile: false,
+      ignoreDefaultArgs: ['--enable-automation'],
       args: [
         '--disable-blink-features=AutomationControlled',
-        '--no-sandbox',
-        '--disable-dev-shm-usage',
+        '--disable-infobars',
       ],
+    });
+    await this.context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     });
     this.page = this.context.pages()[0] || (await this.context.newPage());
     return this.page;
