@@ -1,60 +1,63 @@
-# VisionAid++ Architecture
+# VoiceWeb Agent — Architecture
 
-## Design principles
+## Problem
 
-1. **Voice-first** — a completely blind user living alone must complete core tasks without seeing the screen.
-2. **Feature-first Clean Architecture** — `data` / `domain` / `presentation` per feature; Riverpod injection.
-3. **On-device by default** — camera frames stay on the phone unless the user opts into cloud AI.
-4. **Adaptive Context Engine** — do not speak every detection; rank by risk, intent, and cooldown.
-5. **Independent-living fallbacks** — if internet, Gemini, or cloud auth fail, local voice + vision + emergency contact still work.
+Blind and low-vision users struggle with complex visual websites (Gmail, WhatsApp Web, food/grocery). Native phone automation is brittle. A **voice front-end + controlled browser backend** lets the assistant operate the web like a laptop, with **human confirmation** before payments/sends.
 
-## Current product (honest)
-
-The mobile app is **login-free** today: language → voice profile (name + emergency contact on device) → Voice Home.
-
-**Phone OTP / persistent Supabase sessions** are specified for a later auth phase. They are **not** implemented in Flutter yet. Cloud tables + RLS exist for when that phase ships.
-
-## System layers
+## System design
 
 ```
-Flutter (voice, camera, ML Kit, Context Engine, local prefs)
-    │ optional HTTP + JWT          │ optional anon SDK
-    ▼                              ▼
-Node.js Express (helmet, CORS,     Supabase Postgres + Auth
-rate limit, Prisma, /api/health)   RLS: auth.uid() = user_id
+┌──────────────────────────┐
+│ Flutter Android app      │
+│  - STT / TTS (EN+HI)     │
+│  - Command chips         │
+│  - Browser mirror image  │
+│  - PDF upload            │
+│  - SOS dialer            │
+│  - Settings (API, SOS)   │
+└────────────┬─────────────┘
+             │ HTTPS/HTTP JSON
+             ▼
+┌──────────────────────────┐
+│ Node.js Express API      │
+│  /api/command            │
+│  /api/pdf/summarize      │
+│  /api/screenshot         │
+│  /api/audit (evidence)   │
+└────────────┬─────────────┘
+             │
+     ┌───────┴────────┐
+     ▼                ▼
+ Intent router    Confirm gate
+ (offline rules)  (pending pay/send)
+     │
+     ▼
+ Playwright BrowserAgent
+ (persistent Chromium profile)
+     │
+     ├── Gmail Web
+     ├── WhatsApp Web
+     ├── Swiggy
+     └── Flipkart
+             │
+             ▼
+        Gemini (optional)
+        page/PDF summaries
 ```
 
-## Detection pipeline (implemented)
+## Safety model
 
-```
-Speech → Intent Engine → live camera stream
-  → ML Kit objects + image labels (YOLO TFLite swappable, not bundled)
-  → Context Engine (priority + speak gate)
-  → TTS (hazards / named objects / scene change only)
-```
+1. AI / automation **prepares** actions (search, draft message, open cart).  
+2. Sensitive steps enter **ConfirmGate**.  
+3. User must say **confirm** (or Cancel).  
+4. Audit log stores commands for viva evidence (`data/audit.jsonl`).
 
-OCR (`Read this`) uses a still frame + ML Kit Text Recognition.
+## Why this is valid research/engineering
 
-Gemini continuous walking, ARCore live depth, food ordering, and persistent spatial maps are **not** implemented. Outdoor turn-by-turn uses **Geoapify** when `GEOAPIFY_API_KEY` is set.
+- Separates **perception of UI** (browser DOM/text) from **mobile voice UX**.  
+- Applies **human-in-the-loop** for irreversible actions.  
+- Works **sideloaded** without Play Store; uses persistent browser login instead of fragile unofficial APIs where possible.
 
-## Flutter
+## Limitations
 
-| Layer | Role |
-|-------|------|
-| presentation | Pages (voice home, live vision, settings, onboarding) |
-| domain | Intent, context, OCR, vision contracts |
-| data | ML Kit, STT/TTS, emergency caller |
-| core | Config, router, theme, pipeline |
-
-## Backend
-
-| Layer | Role |
-|-------|------|
-| `GET /api/health` | Liveness |
-| `GET /api/ready` | DB + auth config |
-| `/api/profile` | JWT-protected upsert (unused by guest app) |
-| Prisma | Same Postgres as Supabase |
-
-## Deployment
-
-Render for Node. Supabase Cloud for Postgres.
+Website DOM changes; OTP/captchas need the user; Gemini improves summaries but core intents work offline; not a full native-app controller.

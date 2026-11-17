@@ -1,18 +1,16 @@
-# VisionAid++ Flutter
+# voiceweb_agent
 
-## Setup (once)
+A new Flutter project.
 
-```powershell
-copy .env.example .env
-```
+## Getting Started
 
-Edit `.env` with Supabase anon key + URL.
+This project is a starting point for a Flutter application.
 
-## Run / release
+A few resources to get you started if this is your first Flutter project:
 
-```powershell
-flutter run
-flutter build apk --release
-```
+- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
 
-No dart-defines needed.
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.

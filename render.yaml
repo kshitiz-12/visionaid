@@ -1,12 +1,10 @@
-# VisionAid++ + VoiceWeb Agent — Render Blueprint
-# https://render.com/docs/blueprint-spec
-#
-# Deploy: connect this GitHub repo in Render → New → Blueprint
-# Set secret env vars in the Render dashboard (never commit them).
+# VoiceWeb Agent — Render Blueprint
+# Connect this GitHub repo in Render → New → Blueprint
+# Set GEMINI_API_KEY in the Render dashboard (never commit it).
 
 services:
   - type: web
-    name: visionaid-backend
+    name: voiceweb-agent
     runtime: docker
     plan: free
     rootDir: backend
@@ -14,29 +12,10 @@ services:
     dockerContext: .
     healthCheckPath: /api/health
     autoDeploy: true
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: "3000"
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      - key: DATABASE_URL
-        sync: false
-      - key: DIRECT_URL
-        sync: false
-
-  - type: web
-    name: voiceweb-agent
-    runtime: docker
-    plan: free
-    rootDir: voiceweb-backend
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
-    healthCheckPath: /api/health
-    autoDeploy: true
+    disk:
+      name: browser-profile
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
